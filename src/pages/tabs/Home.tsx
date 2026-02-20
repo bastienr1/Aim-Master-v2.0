@@ -5,13 +5,18 @@ import { relativeTime, getCategoryColor } from '@/lib/time';
 import {
   RefreshCw, Crosshair, Star, CalendarDays, FileText,
   TrendingUp, TrendingDown, Minus, ArrowRight, Brain,
-  Sparkles, AlertCircle, Link2
+  AlertCircle, Link2
 } from 'lucide-react';
 import {
-  AreaChart, Area, ResponsiveContainer, PieChart, Pie, Cell,
+  AreaChart, Area, ResponsiveContainer,
   BarChart, Bar, XAxis, YAxis, Tooltip
 } from 'recharts';
 import { ProfileOnboarding } from '@/components/onboarding/ProfileOnboarding';
+
+// New Battle Stats components
+import { SkillRadar } from '@/components/dashboard/SkillRadar';
+import { MissionBriefing } from '@/components/dashboard/MissionBriefing';
+import { MentalGameBar } from '@/components/dashboard/MentalGameBar';
 
 interface HomeProps {
   profile: any;
@@ -554,6 +559,11 @@ export function Home({ profile, onNavigate, onRefresh, onTriggerCheckin }: HomeP
   // =========================================================
   return (
     <div className="p-6 lg:p-8 animate-slide-up">
+      <style>{`
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+        @keyframes prBadgePulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }
+      `}</style>
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
         <div>
@@ -582,7 +592,14 @@ export function Home({ profile, onNavigate, onRefresh, onTriggerCheckin }: HomeP
       ) : (
         <div
           className="rounded-xl p-5 mb-6 bg-gradient-to-r from-[#1C2B36] to-[#2A3A47] border-l-4 transition-all"
-          style={{ borderLeftColor: momentumConfig.color }}
+          style={{
+            borderLeftColor: momentumConfig.color,
+            boxShadow: momentumData?.state === 'improving'
+              ? '0 0 30px rgba(61,213,152,0.06)'
+              : momentumData?.state === 'declining'
+              ? '0 0 30px rgba(255,202,58,0.06)'
+              : 'none',
+          }}
         >
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
@@ -674,6 +691,13 @@ export function Home({ profile, onNavigate, onRefresh, onTriggerCheckin }: HomeP
         </div>
       )}
 
+      {/* Section 2.5: Mental Game Status */}
+      <MentalGameBar
+        streakDays={profile?.checkin_streak || 0}
+        onCheckin={() => onTriggerCheckin?.()}
+        onNavigate={onNavigate}
+      />
+
       {/* Section 3: Activity + Coach */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
         {/* Recent Activity */}
@@ -731,179 +755,33 @@ export function Home({ profile, onNavigate, onRefresh, onTriggerCheckin }: HomeP
           )}
         </div>
 
-        {/* AI Coach Card */}
+        {/* Mission Briefing (replaces AI Coach) */}
         <div>
           {loadingCoach || loadingMomentum ? (
             <SkeletonBlock className="h-96" />
           ) : errorCoach ? (
             <SectionError onRetry={loadCoach} label="coach insights" />
           ) : (
-            <div className="bg-gradient-to-br from-[#1C2B36] to-[#2A3A47] border border-[#53CADC]/20 rounded-xl p-6 h-full breathing-border">
-              <div className="flex items-center gap-3 mb-5">
-                <div className="w-10 h-10 rounded-xl bg-[#53CADC]/10 flex items-center justify-center">
-                  <Brain className="w-5 h-5 text-[#53CADC]" />
-                </div>
-                <div>
-                  <h3 className="font-['Rajdhani'] text-lg font-semibold text-[#ECE8E1]">AI Coach</h3>
-                  <p className="text-[#5A6872] text-xs font-['Inter']">Personalized insights</p>
-                </div>
-              </div>
-
-              {coachState === 'improving' && (
-                <div className="space-y-4">
-                  <div className="bg-[#3DD598]/10 border border-[#3DD598]/20 rounded-xl p-4">
-                    <div className="flex items-center gap-2 mb-1">
-                      <Sparkles className="w-4 h-4 text-[#3DD598]" />
-                      <span className="font-['Rajdhani'] font-semibold text-[#3DD598]">You're in the zone!</span>
-                    </div>
-                    <p className="text-[#9CA8B3] text-sm font-['Inter']">
-                      Your scores are trending up. Keep pushing for new personal records!
-                    </p>
-                  </div>
-                  {coachData?.strongest && (
-                    <div className="bg-[#0F1923] rounded-xl p-4">
-                      <span className="text-[#5A6872] text-xs font-['Inter'] uppercase tracking-wider">Strongest Area</span>
-                      <p className="text-[#ECE8E1] text-sm font-['Inter'] mt-1">{coachData.strongest.category}</p>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {coachState === 'declining' && (
-                <div className="space-y-4">
-                  <div className="bg-[#FFCA3A]/10 border border-[#FFCA3A]/20 rounded-xl p-4">
-                    <div className="flex items-center gap-2 mb-1">
-                      <AlertCircle className="w-4 h-4 text-[#FFCA3A]" />
-                      <span className="font-['Rajdhani'] font-semibold text-[#FFCA3A]">Time to recalibrate</span>
-                    </div>
-                    <p className="text-[#9CA8B3] text-sm font-['Inter']">
-                      Scores are dipping. Consider focusing on your weakest area.
-                    </p>
-                  </div>
-                  {coachData?.weakest && (
-                    <div className="bg-[#0F1923] rounded-xl p-4">
-                      <span className="text-[#5A6872] text-xs font-['Inter'] uppercase tracking-wider">Focus Area</span>
-                      <p className="text-[#ECE8E1] text-sm font-['Inter'] mt-1">{coachData.weakest.category}</p>
-                    </div>
-                  )}
-                  {coachData?.suggestedScenario && (
-                    <div className="bg-[#0F1923] rounded-xl p-4">
-                      <span className="text-[#5A6872] text-xs font-['Inter'] uppercase tracking-wider">Try This Scenario</span>
-                      <p className="text-[#53CADC] text-sm font-['Inter'] mt-1">{coachData.suggestedScenario}</p>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {coachState === 'inactive' && (
-                <div className="space-y-4">
-                  <div className="bg-[#9CA8B3]/10 border border-[#9CA8B3]/20 rounded-xl p-4">
-                    <div className="flex items-center gap-2 mb-1">
-                      <Crosshair className="w-4 h-4 text-[#9CA8B3]" />
-                      <span className="font-['Rajdhani'] font-semibold text-[#9CA8B3]">Your aim is waiting</span>
-                    </div>
-                    <p className="text-[#9CA8B3] text-sm font-['Inter']">
-                      It's been {coachData?.daysSinceLast} days since your last session. Jump back in to maintain your skills!
-                    </p>
-                  </div>
-                </div>
-              )}
-
-              {coachState === 'insufficient' && (
-                <div className="space-y-4">
-                  <div className="bg-[#53CADC]/10 border border-[#53CADC]/20 rounded-xl p-4">
-                    <div className="flex items-center gap-2 mb-1">
-                      <Brain className="w-4 h-4 text-[#53CADC]" />
-                      <span className="font-['Rajdhani'] font-semibold text-[#53CADC]">Getting to know your game</span>
-                    </div>
-                    <p className="text-[#9CA8B3] text-sm font-['Inter']">
-                      Keep training! The AI coach needs more data to provide personalized insights.
-                    </p>
-                  </div>
-                </div>
-              )}
-
-              {coachState === 'steady' && (
-                <div className="space-y-4">
-                  <div className="bg-[#9CA8B3]/10 border border-[#9CA8B3]/20 rounded-xl p-4">
-                    <div className="flex items-center gap-2 mb-1">
-                      <Minus className="w-4 h-4 text-[#9CA8B3]" />
-                      <span className="font-['Rajdhani'] font-semibold text-[#9CA8B3]">Holding steady</span>
-                    </div>
-                    <p className="text-[#9CA8B3] text-sm font-['Inter']">
-                      Your performance is consistent. Try pushing into new scenarios to break through plateaus.
-                    </p>
-                  </div>
-                  {coachData?.weakest && (
-                    <div className="bg-[#0F1923] rounded-xl p-4">
-                      <span className="text-[#5A6872] text-xs font-['Inter'] uppercase tracking-wider">Weakest Area</span>
-                      <p className="text-[#ECE8E1] text-sm font-['Inter'] mt-1">{coachData.weakest.category}</p>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
+            <MissionBriefing
+              coachState={coachState}
+              coachData={coachData}
+              momentumData={momentumData}
+              onNavigate={onNavigate}
+            />
           )}
         </div>
       </div>
 
       {/* Section 4: Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Aim Type Distribution */}
+        {/* Battle Stats Radar (replaces Aim Type Distribution) */}
         <div>
           {loadingCharts ? (
             <SkeletonBlock className="h-80" />
           ) : errorCharts ? (
             <SectionError onRetry={loadCharts} label="charts" />
           ) : (
-            <div className="bg-[#2A3A47] border border-white/10 rounded-xl p-6">
-              <h3 className="font-['Rajdhani'] text-lg font-semibold text-[#ECE8E1] mb-4">
-                Aim Type Distribution
-              </h3>
-              {!chartData?.distribution?.length ? (
-                <div className="text-center py-8">
-                  <p className="text-[#5A6872] text-sm font-['Inter']">No scenario data yet</p>
-                </div>
-              ) : (
-                <div className="flex flex-col items-center">
-                  <div className="w-full h-48 relative">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                        <Pie
-                          data={chartData.distribution}
-                          cx="50%"
-                          cy="50%"
-                          innerRadius={55}
-                          outerRadius={75}
-                          paddingAngle={3}
-                          dataKey="value"
-                          stroke="none"
-                        >
-                          {chartData.distribution.map((entry: any, index: number) => (
-                            <Cell key={index} fill={entry.color} />
-                          ))}
-                        </Pie>
-                      </PieChart>
-                    </ResponsiveContainer>
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <span className="font-['JetBrains_Mono'] text-2xl font-bold text-[#ECE8E1]">
-                        {chartData.distribution.reduce((a: number, b: any) => a + b.value, 0)}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="flex flex-wrap justify-center gap-4 mt-4">
-                    {chartData.distribution.map((entry: any, i: number) => (
-                      <div key={i} className="flex items-center gap-2">
-                        <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: entry.color }} />
-                        <span className="text-[#9CA8B3] text-xs font-['Inter']">
-                          {entry.name} ({entry.value})
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
+            <SkillRadar distribution={chartData?.distribution} />
           )}
         </div>
 
