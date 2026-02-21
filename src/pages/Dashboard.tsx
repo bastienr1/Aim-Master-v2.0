@@ -76,6 +76,17 @@ export default function Dashboard() {
     loadProfile();
   }, [loadProfile]);
 
+  // Force home tab when profile is incomplete (new user after registration)
+  useEffect(() => {
+    if (profile !== null && profile !== undefined) {
+      const isComplete = !!(profile?.main_game && profile?.username);
+      if (!isComplete && activeTab !== 'home') {
+        setActiveTab('home');
+        sessionStorage.setItem('aim-master-tab', 'home');
+      }
+    }
+  }, [profile, activeTab]);
+
   const handleNavigate = (tab: string) => {
     setActiveTab(tab as Tab);
     setMobileMenuOpen(false);

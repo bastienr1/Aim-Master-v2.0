@@ -12,7 +12,7 @@ import {
   Search, Trophy, Target, Zap, Crosshair, BookOpen, Loader2,
   CheckCircle, AlertCircle, RotateCcw, ArrowLeft, Trash2,
   Users, Clock, ListChecks, Download, ChevronRight, Hash,
-  Sparkles, LayoutGrid, List,
+  Sparkles, LayoutGrid, List, ExternalLink, Copy, Check,
 } from 'lucide-react';
 import { PreTrainingCheckin } from '@/components/mental-game/PreTrainingCheckin';
 import { usePreTrainingGate } from '@/hooks/usePreTrainingGate';
@@ -141,6 +141,7 @@ export function Training({ profile: _profile, onRefresh: _onRefresh, pendingInte
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [scenarioScores, setScenarioScores] = useState<Map<string, ScoreInfo>>(new Map());
   const [showIntroduction, setShowIntroduction] = useState(false);
+  const [autoImporting, setAutoImporting] = useState(false);
 
   const loadScores = useCallback(async (userId: string) => {
     const scoreMap = new Map<string, ScoreInfo>();
@@ -206,44 +207,49 @@ export function Training({ profile: _profile, onRefresh: _onRefresh, pendingInte
   console.log('Training: auto-loading playlist for intent:', pendingIntent.intent);
 
     const autoLoadPlaylist = async () => {
-      const intent = pendingIntent.intent;
-      let playlists: PlaylistSearchResult[] = [];
+      setAutoImporting(true);
+      try {
+        const intent = pendingIntent.intent;
+        let playlists: PlaylistSearchResult[] = [];
 
-      if (intent === 'warmup') {
-        const result = await PlaylistService.searchPlaylists('RAMP');
-        if (result.success && result.data) {
-          playlists = extractPlaylists(result.data);
-        }
-        if (playlists.length === 0) {
-          const fallback = await PlaylistService.searchPlaylists('Valorant RAMP Warmup');
-          if (fallback.success && fallback.data) {
-            playlists = extractPlaylists(fallback.data);
+        if (intent === 'warmup') {
+          const result = await PlaylistService.searchPlaylists('RAMP');
+          if (result.success && result.data) {
+            playlists = extractPlaylists(result.data);
+          }
+          if (playlists.length === 0) {
+            const fallback = await PlaylistService.searchPlaylists('Valorant RAMP Warmup');
+            if (fallback.success && fallback.data) {
+              playlists = extractPlaylists(fallback.data);
+            }
+          }
+        } else if (intent === 'improve') {
+          const result = await PlaylistService.searchPlaylists('Voltaic S5 Fundamental');
+          if (result.success && result.data) {
+            playlists = extractPlaylists(result.data);
+          }
+          if (playlists.length === 0) {
+            const fallback = await PlaylistService.searchPlaylists('Voltaic S5 Benchmark');
+            if (fallback.success && fallback.data) {
+              playlists = extractPlaylists(fallback.data);
+            }
+          }
+          if (playlists.length === 0) {
+            const fallback = await PlaylistService.searchPlaylists('Voltaic');
+            if (fallback.success && fallback.data) {
+              playlists = extractPlaylists(fallback.data);
+            }
           }
         }
-      } else if (intent === 'improve') {
-        const result = await PlaylistService.searchPlaylists('Voltaic S5 Fundamental');
-        if (result.success && result.data) {
-          playlists = extractPlaylists(result.data);
-        }
-        if (playlists.length === 0) {
-          const fallback = await PlaylistService.searchPlaylists('Voltaic S5 Benchmark');
-          if (fallback.success && fallback.data) {
-            playlists = extractPlaylists(fallback.data);
-          }
-        }
-        if (playlists.length === 0) {
-          const fallback = await PlaylistService.searchPlaylists('Voltaic');
-          if (fallback.success && fallback.data) {
-            playlists = extractPlaylists(fallback.data);
-          }
-        }
-      }
 
-      if (playlists.length > 0) {
-        await handleImport(playlists[0]);
-        setShowIntroduction(true);
-      } else {
-        console.warn('No default playlist found for intent:', intent);
+        if (playlists.length > 0) {
+          await handleImport(playlists[0]);
+          setShowIntroduction(true);
+        } else {
+          console.warn('No default playlist found for intent:', intent);
+        }
+      } finally {
+        setAutoImporting(false);
       }
     };
 
@@ -353,10 +359,22 @@ export function Training({ profile: _profile, onRefresh: _onRefresh, pendingInte
     setUpdatingScenario(null);
   };
 
-  if (loadingPrograms) {
+  if (loadingPrograms || autoImporting) {
     return (
       <div className="flex items-center justify-center h-[60vh]">
-        <Loader2 className="w-8 h-8 text-[#FF4655] animate-spin" />
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="w-8 h-8 text-[#FF4655] animate-spin" />
+          {autoImporting && (
+            <div className="text-center">
+              <p className="text-[#ECE8E1] text-sm font-['Inter'] font-medium">
+                Setting up your training playlist...
+              </p>
+              <p className="text-[#5A6872] text-xs font-['Inter'] mt-1">
+                Fetching scenarios from KovaaK's
+              </p>
+            </div>
+          )}
+        </div>
       </div>
     );
   }
@@ -766,6 +784,7 @@ function ActiveProgramView({
   const { user } = useAuth();
   const [syncing, setSyncing] = useState(false);
   const [viewMode, setViewMode] = useState<'card' | 'list'>('card');
+  const [copiedCode, setCopiedCode] = useState(false);
 
   const scenarios: any[] = Array.isArray(program.scenarios_data) ? program.scenarios_data.filter(Boolean) : [];
   const completionMap = new Map(completions.map((c) => [c.scenario_name, c]));
@@ -994,6 +1013,54 @@ function ActiveProgramView({
           </div>
         </div>
       </div>
+
+      {/* Steam Deep Link — Launch KovaaK's */}
+      {program.playlist_code && (
+        <div className="mt-4 bg-gradient-to-r from-[#1C2B36] to-[#1C2B36] border border-[#FF4655]/20 rounded-xl p-5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex-1 min-w-0">
+              <h3 className="font-['Rajdhani'] text-base font-semibold text-[#ECE8E1] mb-1">
+                Ready to train?
+              </h3>
+              <p className="text-[#9CA8B3] text-xs font-['Inter']">
+                Click launch to open KovaaK's and jump straight into the playlist. No manual import needed.
+              </p>
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(program.playlist_code!);
+                  setCopiedCode(true);
+                  setTimeout(() => setCopiedCode(false), 2000);
+                }}
+                className="mt-2 inline-flex items-center gap-1.5 text-[#53CADC] hover:text-[#53CADC]/80 text-xs font-['JetBrains_Mono'] transition-colors"
+              >
+                {copiedCode ? (
+                  <>
+                    <Check className="w-3.5 h-3.5 text-[#3DD598]" />
+                    <span className="text-[#3DD598]">Copied!</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-3.5 h-3.5" />
+                    {program.playlist_code}
+                  </>
+                )}
+              </button>
+            </div>
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText(program.playlist_code!);
+                setCopiedCode(true);
+                setTimeout(() => setCopiedCode(false), 2000);
+                window.open(`steam://run/824270/?action=jump-to-playlist;sharecode=${program.playlist_code}`, '_self');
+              }}
+              className="bg-[#FF4655] hover:bg-[#FF4655]/90 text-white rounded-xl px-6 py-3 text-sm font-semibold font-['Inter'] flex items-center gap-2 transition-all shadow-lg shadow-[#FF4655]/20 shrink-0"
+            >
+              <ExternalLink className="w-4 h-4" />
+              Launch KovaaK's
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Playlist Introduction — shown above scenarios when auto-loaded */}
       {showIntroduction && pendingIntent && onDismissIntroduction && (
