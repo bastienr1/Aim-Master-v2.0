@@ -20,7 +20,7 @@ export function SkillRadar({ distribution, categoryScores }: SkillRadarProps) {
           Battle Stats
         </h3>
         <span className="text-[11px] font-['Inter'] text-[#5A6872] bg-[#0F1923] px-2 py-1 rounded-full">
-          {dataSource === 'scores' ? 'Based on performance' : 'Based on play volume'}
+          {dataSource === 'scores' ? 'Based on high scores' : 'Based on play volume'}
         </span>
       </div>
 

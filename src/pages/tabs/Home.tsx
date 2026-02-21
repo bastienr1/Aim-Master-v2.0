@@ -299,14 +299,14 @@ export function Home({ profile, onNavigate, onRefresh, onTriggerCheckin }: HomeP
 
       const { data: catStats } = await supabase
         .from('user_scenario_stats')
-        .select('average_score, total_attempts, scenarios(category, name)')
+        .select('high_score, total_attempts, scenarios(category, name)')
         .eq('user_id', user.id);
 
       const catAvgs: Record<string, { total: number; count: number }> = {};
       (catStats || []).forEach((s: any) => {
         const cat = (s.scenarios as any)?.category || 'Other';
         if (!catAvgs[cat]) catAvgs[cat] = { total: 0, count: 0 };
-        catAvgs[cat].total += Number(s.average_score) || 0;
+        catAvgs[cat].total += Number(s.high_score) || 0;
         catAvgs[cat].count += 1;
       });
 

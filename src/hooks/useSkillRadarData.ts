@@ -19,9 +19,6 @@ export interface CategoryScore {
   avg: number;
 }
 
-/** Maximum score ceiling for 0-100 normalization. 1000 ≈ Voltaic Master tier. */
-const SCORE_CEILING = 1000;
-
 /**
  * Exhaustive map: every known Supabase/Kovaaks category string → radar axis.
  * Add new entries here if new category names appear in your data.
@@ -111,11 +108,6 @@ export function useSkillRadarData(
 
 // ─── Score-based radar (v1.0) ───────────────────────────────────────
 
-function normalizeScore(raw: number): number {
-  if (!raw || raw <= 0) return 0;
-  return Math.min(Math.round((raw / SCORE_CEILING) * 100), 100);
-}
-
 /**
  * Maps a category string to its radar axis using the exhaustive lookup map.
  * Falls back to substring matching if exact match fails.
@@ -150,22 +142,37 @@ function buildFromScores(scores: CategoryScore[]): RadarDataPoint[] {
     }
   }
 
-  // Average per axis, then normalize
-  const getAxisValue = (axis: string): number => {
-    const vals = axisScores[axis];
-    if (vals.length === 0) return 0;
-    const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
-    return normalizeScore(avg);
+  // Average per axis (raw values)
+  const rawAxisValues: Record<string, number> = {};
+  for (const [axis, vals] of Object.entries(axisScores)) {
+    rawAxisValues[axis] = vals.length > 0
+      ? vals.reduce((a, b) => a + b, 0) / vals.length
+      : 0;
+  }
+
+  // Dynamic ceiling: use the highest axis value so radar shows relative proportions
+  // Then scale so the max axis = 85 (not 100, leaving room to grow)
+  const maxRaw = Math.max(...Object.values(rawAxisValues).filter(v => v > 0), 1);
+  const DISPLAY_CAP = 85; // strongest axis shows as 85/100
+
+  const normalize = (raw: number): number => {
+    if (raw <= 0 || maxRaw <= 0) return 0;
+    return Math.min(Math.round((raw / maxRaw) * DISPLAY_CAP), 100);
   };
 
-  const clicking = getAxisValue('Clicking');
-  const tracking = getAxisValue('Tracking');
-  const switching = getAxisValue('Switching');
+  const clicking = normalize(rawAxisValues['Clicking']);
+  const tracking = normalize(rawAxisValues['Tracking']);
+  const switching = normalize(rawAxisValues['Switching']);
 
   // Derived axes: use direct values if available, else derive from parent
-  const speed = getAxisValue('Speed') || Math.round(clicking * 0.85);
-  const precision = getAxisValue('Precision') || Math.round(tracking * 0.9);
-  const stability = getAxisValue('Stability') || Math.round(switching * 0.88);
+  const speed = normalize(rawAxisValues['Speed']) || Math.round(clicking * 0.85);
+  const precision = normalize(rawAxisValues['Precision']) || Math.round(tracking * 0.9);
+  const stability = normalize(rawAxisValues['Stability']) || Math.round(switching * 0.88);
+
+  // ── DEBUG: Remove after confirming ──
+  console.log('[BattleStats Radar] raw axis values:', rawAxisValues);
+  console.log('[BattleStats Radar] maxRaw ceiling:', maxRaw);
+  console.log('[BattleStats Radar] normalized:', { clicking, tracking, switching, speed, precision, stability });
 
   return [
     { skill: 'Clicking',  value: clicking,   fullMark: 100 },

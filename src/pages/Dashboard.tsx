@@ -18,6 +18,9 @@ import { usePreTrainingGate } from '@/hooks/usePreTrainingGate';
 import { useCheckinStreak } from '@/hooks/useCheckinStreak';
 import { CheckinButton } from '@/components/dashboard/CheckinButton';
 import { CheckinStreakCard } from '@/components/dashboard/CheckinStreakCard';
+import { PostSessionDebrief } from '@/components/post-session/PostSessionDebrief';
+import { usePostSessionGate } from '@/hooks/usePostSessionGate';
+import { useSessionDetection } from '@/hooks/useSessionDetection';
 
 type Tab = 'home' | 'training' | 'mental' | 'stats' | 'coach' | 'goals' | 'sessions' | 'profile';
 
@@ -46,6 +49,10 @@ export default function Dashboard() {
   // Streak data for the dashboard
   const streak = useCheckinStreak();
 
+  // Post-session debrief gate and session detection
+  const { showDebrief, triggerDebrief, dismissDebrief, completeDebrief } = usePostSessionGate();
+  const { sessionData, detectSession, clearSession } = useSessionDetection();
+
   // CHANGE 1 — Pending intent state
   const [pendingIntent, setPendingIntent] = useState<{ intent: string; autoLoaded: boolean } | null>(null);
 
@@ -57,6 +64,19 @@ export default function Dashboard() {
   const handleSwitchToTraining = useCallback(() => {
     setActiveTab('training');
   }, []);
+
+  // Auto-trigger session detection when player returns (tab focus)
+  useEffect(() => {
+    const handleFocus = async () => {
+      const session = await detectSession();
+      if (session) {
+        await triggerDebrief();
+      }
+    };
+
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, [detectSession, triggerDebrief]);
 
   useEffect(() => {
     sessionStorage.setItem('aim-master-tab', activeTab);
@@ -101,6 +121,17 @@ export default function Dashboard() {
         onComplete={completeCheckin}
         onIntentComplete={handleIntentComplete}
         onSwitchToTraining={handleSwitchToTraining}
+      />
+
+      {/* Post-session debrief modal */}
+      <PostSessionDebrief
+        isOpen={showDebrief}
+        onClose={dismissDebrief}
+        onComplete={() => {
+          completeDebrief();
+          clearSession();
+        }}
+        sessionData={sessionData}
       />
 
       {/* Mobile header */}
