@@ -1,0 +1,397 @@
+// supabase/functions/kovaaks-sync/index.ts
+// Updated with correct Kovaak's API endpoints: /webapp-backend/
+import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+};
+
+const KOVAAKS_BASE = 'https://kovaaks.com/webapp-backend';
+
+serve(async (req: Request) => {
+  // Handle CORS preflight
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders });
+  }
+
+  try {
+    const { action, username } = await req.json();
+    console.log(`=== KOVAAKS SYNC === Action: ${action}, Username: ${username}`);
+
+    // Initialize Supabase client
+    const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    // Get user ID from auth header, or use test ID
+let userId: string | null = null;
+const authHeader = req.headers.get('Authorization');
+if (authHeader) {
+  const token = authHeader.replace('Bearer ', '');
+  try {
+    // Decode the JWT payload directly (base64)
+    const payloadBase64 = token.split('.')[1];
+    const payload = JSON.parse(atob(payloadBase64));
+    console.log(`JWT sub: ${payload.sub}, iss: ${payload.iss}, exp: ${payload.exp}`);
+    
+    if (payload.sub && payload.iss?.includes('supabase')) {
+      userId = payload.sub;
+    }
+  } catch (e) {
+    console.log(`JWT decode error: ${e.message}`);
+  }
+}
+
+if (!userId) {
+  return new Response(
+    JSON.stringify({ error: 'Authentication required' }),
+    { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
+  );
+}
+
+    console.log(`User ID: ${userId}`);
+
+    // ========================
+    // ACTION: VALIDATE
+    // ========================
+    if (action === 'validate') {
+      console.log(`Validating username: ${username}`);
+      const profileUrl = `${KOVAAKS_BASE}/user/profile/by-username?username=${encodeURIComponent(username)}`;
+      console.log(`Fetching: ${profileUrl}`);
+
+      const response = await fetch(profileUrl);
+      console.log(`Kovaaks API status: ${response.status}`);
+
+      if (!response.ok) {
+        const text = await response.text();
+        console.log(`Error response: ${text.substring(0, 200)}`);
+        return new Response(
+          JSON.stringify({ valid: false, error: 'Username not found on Kovaak\'s' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+        );
+      }
+
+      const profile = await response.json();
+      console.log(`Profile found: ${profile.steamAccountName}, playerId: ${profile.playerId}`);
+
+      // Upsert to kovaaks_profiles table
+      const profileData = {
+        user_id: userId,
+        username: username,
+        steam_id: profile.steamId || null,
+        steam_name: profile.steamAccountName || null,
+        steam_avatar: profile.steamAccountAvatar || null,
+        player_id: profile.playerId?.toString() || null,
+        country: profile.country || null,
+        kovaaks_plus_active: profile.kovaaksPlusActive || false,
+        scenarios_played_count: parseInt(profile.scenariosPlayed) || 0,
+        followers_count: profile.followCounts?.followers || 0,
+        following_count: profile.followCounts?.following || 0,
+        sync_enabled: true,
+        sync_status: 'connected',
+        raw_profile_data: profile,
+        last_synced_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+
+      const { error: upsertError } = await supabase
+        .from('kovaaks_profiles')
+        .upsert(profileData, { onConflict: 'user_id' });
+
+      if (upsertError) {
+        console.log(`Upsert error: ${JSON.stringify(upsertError)}`);
+      } else {
+        console.log('Profile saved to database');
+      }
+
+      return new Response(
+        JSON.stringify({
+          valid: true,
+          profile: {
+            username: profile.webapp?.username || username,
+            steamName: profile.steamAccountName,
+            avatar: profile.steamAccountAvatar,
+            playerId: profile.playerId,
+            country: profile.country,
+            scenariosPlayed: profile.scenariosPlayed,
+            kovaaksPlus: profile.kovaaksPlusActive,
+            mouse: profile.webapp?.gamingPeripherals?.mouse || null,
+            dpi: profile.webapp?.gameSettings?.dpi || null,
+            cm360: profile.webapp?.gameSettings?.cm360 || null,
+            sensitivity: profile.webapp?.gameSettings?.sensitivity || null,
+          }
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+      );
+    }
+
+    // ========================
+    // ACTION: FULL_SYNC
+    // ========================
+    if (action === 'full_sync') {
+      console.log(`Starting full sync for: ${username}`);
+      const results = { profile: false, recentScores: 0, favorites: 0, scenariosPlayed: 0 };
+
+      // 1. Sync Profile
+      try {
+        const profileRes = await fetch(`${KOVAAKS_BASE}/user/profile/by-username?username=${encodeURIComponent(username)}`);
+        if (profileRes.ok) {
+          const profile = await profileRes.json();
+          
+          const profileData = {
+            user_id: userId,
+            username: username,
+            steam_id: profile.steamId || null,
+            steam_name: profile.steamAccountName || null,
+            steam_avatar: profile.steamAccountAvatar || null,
+            player_id: profile.playerId?.toString() || null,
+            country: profile.country || null,
+            kovaaks_plus_active: profile.kovaaksPlusActive || false,
+            scenarios_played_count: parseInt(profile.scenariosPlayed) || 0,
+            followers_count: profile.followCounts?.followers || 0,
+            following_count: profile.followCounts?.following || 0,
+            sync_enabled: true,
+            sync_status: 'syncing',
+            raw_profile_data: profile,
+            last_synced_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          };
+
+          await supabase.from('kovaaks_profiles').upsert(profileData, { onConflict: 'user_id' });
+          results.profile = true;
+          console.log('Profile synced');
+
+          // Also update gaming_setups if we have peripheral data
+          if (profile.webapp?.gameSettings || profile.webapp?.gamingPeripherals) {
+            const setupData = {
+              user_id: userId,
+              mouse_dpi: profile.webapp?.gameSettings?.dpi ? parseInt(profile.webapp.gameSettings.dpi) : null,
+              mouse_model: profile.webapp?.gamingPeripherals?.mouse || null,
+              cm_per_360: profile.webapp?.gameSettings?.cm360 ? parseFloat(profile.webapp.gameSettings.cm360) : null,
+              in_game_sensitivity: profile.webapp?.gameSettings?.sensitivity ? parseFloat(profile.webapp.gameSettings.sensitivity) : null,
+              updated_at: new Date().toISOString(),
+            };
+            await supabase.from('gaming_setups').upsert(setupData, { onConflict: 'user_id' });
+            console.log('Gaming setup synced');
+          }
+        }
+      } catch (e) {
+        console.log(`Profile sync error: ${e.message}`);
+      }
+
+     // 2. Sync Recent High Scores
+try {
+  const recentRes = await fetch(`${KOVAAKS_BASE}/user/activity/recent?username=${encodeURIComponent(username)}`);
+  if (recentRes.ok) {
+    const recentScores = await recentRes.json();
+    console.log(`Recent scores fetched: ${Array.isArray(recentScores) ? recentScores.length : 'not array'}`);
+
+    if (Array.isArray(recentScores)) {
+      for (const score of recentScores) {
+        // Upsert scenario first
+        if (score.leaderboardId && score.scenarioName) {
+          const { error: scenUpsertErr } = await supabase.from('scenarios').upsert({
+            kovaaks_id: score.leaderboardId.toString(),
+            name: score.scenarioName,
+            updated_at: new Date().toISOString(),
+          }, { onConflict: 'kovaaks_id' });
+          if (scenUpsertErr) console.log(`Scenario upsert error: ${JSON.stringify(scenUpsertErr)}`);
+        }
+
+        // Get scenario ID for FK reference
+        const { data: scenarioRow, error: scenLookupErr } = await supabase
+          .from('scenarios')
+          .select('id')
+          .eq('kovaaks_id', score.leaderboardId?.toString())
+          .single();
+        console.log(`Score lookup: lbId=${score.leaderboardId}, found=${scenarioRow?.id || 'NULL'}, err=${scenLookupErr?.message || 'none'}`);
+
+        if (scenarioRow) {
+          // Insert score history (single upsert with error logging)
+          const { error: scoreError } = await supabase.from('score_history').upsert({
+            user_id: userId,
+            scenario_id: scenarioRow.id,
+            score: score.score,
+            session_date: score.timestamp || new Date().toISOString(),
+            score_type: score.type || 'high_score',
+            created_at: new Date().toISOString(),
+          }, {
+            onConflict: 'user_id,scenario_id,session_date',
+            ignoreDuplicates: true,
+          });
+          if (scoreError) console.log(`Score insert error: ${JSON.stringify(scoreError)}`);
+          else console.log(`Score inserted: ${score.scenarioName} = ${score.score}`);
+
+          // Update user_scenario_stats with high score
+          const { data: existingStat } = await supabase
+            .from('user_scenario_stats')
+            .select('high_score, total_attempts')
+            .eq('user_id', userId)
+            .eq('scenario_id', scenarioRow.id)
+            .single();
+
+          const newHighScore = Math.max(score.score, existingStat?.high_score || 0);
+          await supabase.from('user_scenario_stats').upsert({
+            user_id: userId,
+            scenario_id: scenarioRow.id,
+            high_score: newHighScore,
+            total_attempts: (existingStat?.total_attempts || 0) + 1,
+            last_played_at: score.timestamp || new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          }, { onConflict: 'user_id,scenario_id' });
+        } else {
+          console.log(`Skipping score - no scenario found for lbId=${score.leaderboardId}`);
+        }
+        results.recentScores++;
+      }
+    }
+  }
+} catch (e) {
+  console.log(`Recent scores sync error: ${e.message}`);
+}
+
+      // 3. Sync Favorite Scenarios
+      try {
+        const favRes = await fetch(`${KOVAAKS_BASE}/user/favorite/scenarios?username=${encodeURIComponent(username)}`);
+        if (favRes.ok) {
+          const favorites = await favRes.json();
+          console.log(`Favorites fetched: ${Array.isArray(favorites) ? favorites.length : 'not array'}`);
+
+          if (Array.isArray(favorites)) {
+            for (const fav of favorites) {
+              if (fav.leaderboardId && fav.scenarioName) {
+                // Upsert scenario
+                await supabase.from('scenarios').upsert({
+                  kovaaks_id: fav.leaderboardId.toString(),
+                  name: fav.scenarioName,
+                  updated_at: new Date().toISOString(),
+                }, { onConflict: 'kovaaks_id' });
+
+                // Get scenario ID
+                const { data: scenarioRow } = await supabase
+                  .from('scenarios')
+                  .select('id')
+                  .eq('kovaaks_id', fav.leaderboardId.toString())
+                  .single();
+
+                if (scenarioRow) {
+                  // Mark as favorite
+                  await supabase.from('user_scenario_stats').upsert({
+                    user_id: userId,
+                    scenario_id: scenarioRow.id,
+                    is_favorite: true,
+                    high_score: fav.score || 0,
+                    updated_at: new Date().toISOString(),
+                  }, { onConflict: 'user_id,scenario_id' });
+
+                  // Sync score history from favorites
+                  if (Array.isArray(fav.scoreHistory)) {
+                    for (const entry of fav.scoreHistory) {
+                      await supabase.from('score_history').upsert({
+                        user_id: userId,
+                        scenario_id: scenarioRow.id,
+                        score: entry.score,
+                        session_date: entry.attributes?.epoch || new Date().toISOString(),
+                        created_at: new Date().toISOString(),
+                      }, {
+                        onConflict: 'user_id,scenario_id,session_date',
+                        ignoreDuplicates: true,
+                      });
+                    }
+                  }
+                }
+              }
+              results.favorites++;
+            }
+          }
+        }
+      } catch (e) {
+        console.log(`Favorites sync error: ${e.message}`);
+      }
+
+      // 4. Sync Scenarios Played (paginated)
+      try {
+        let page = 0;
+        const maxPerPage = 50;
+        let hasMore = true;
+
+        while (hasMore && page < 5) { // Cap at 10 pages (500 scenarios) for safety
+          const playedRes = await fetch(
+            `${KOVAAKS_BASE}/user/scenario/total-play?username=${encodeURIComponent(username)}&page=${page}&max=${maxPerPage}&sort=plays`
+          );
+          
+          if (!playedRes.ok) break;
+          
+          const playedData = await playedRes.json();
+          const scenarios = playedData.data || [];
+          console.log(`Scenarios played page ${page}: ${scenarios.length} items`);
+
+          for (const item of scenarios) {
+            if (item.leaderboardId && item.scenarioName) {
+              // Upsert scenario with metadata
+              await supabase.from('scenarios').upsert({
+                kovaaks_id: item.leaderboardId.toString(),
+                name: item.scenarioName,
+                category: item.scenario?.aimType || null,
+                updated_at: new Date().toISOString(),
+              }, { onConflict: 'kovaaks_id' });
+
+              // Get scenario ID
+              const { data: scenarioRow } = await supabase
+                .from('scenarios')
+                .select('id')
+                .eq('kovaaks_id', item.leaderboardId.toString())
+                .single();
+
+              if (scenarioRow) {
+                await supabase.from('user_scenario_stats').upsert({
+                  user_id: userId,
+                  scenario_id: scenarioRow.id,
+                  high_score: item.score || 0,
+                  total_attempts: item.counts?.plays || 0,
+                  updated_at: new Date().toISOString(),
+                }, { onConflict: 'user_id,scenario_id' });
+              }
+              results.scenariosPlayed++;
+            }
+          }
+
+          hasMore = scenarios.length === maxPerPage;
+          page++;
+        }
+      } catch (e) {
+        console.log(`Scenarios played sync error: ${e.message}`);
+      }
+
+      // Update sync status to completed
+      await supabase.from('kovaaks_profiles').update({
+        sync_status: 'synced',
+        last_synced_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }).eq('user_id', userId);
+
+      console.log(`Full sync complete: ${JSON.stringify(results)}`);
+
+      return new Response(
+        JSON.stringify({ success: true, results }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+      );
+    }
+
+    // Unknown action
+    return new Response(
+      JSON.stringify({ error: `Unknown action: ${action}` }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+    );
+
+  } catch (err) {
+    console.error(`Edge Function error: ${err.message}`);
+    return new Response(
+      JSON.stringify({ error: err.message }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
+    );
+  }
+});

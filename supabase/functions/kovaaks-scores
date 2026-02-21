@@ -1,0 +1,337 @@
+// kovaaks-scores Edge Function (CLEAN)
+// Syncs user scores from Kovaaks API for specific program scenarios
+// Uses TWO endpoints to maximize coverage:
+//   1. /user/scenario/total-play (all-time played scenarios)
+//   2. /user/activity/recent (recent high scores — catches S5 scenarios)
+// Deploy as: "kovaaks-scores" in Supabase Dashboard
+// Settings: Verify JWT = OFF
+
+import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+
+const KOVAAKS_BASE = 'https://kovaaks.com/webapp-backend';
+const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
+const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+};
+
+serve(async (req) => {
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders });
+  }
+
+  try {
+    // Auth
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      return new Response(JSON.stringify({ error: 'No authorization header' }), {
+        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const token = authHeader.replace('Bearer ', '');
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    const userId = payload.sub;
+
+    if (!userId) {
+      return new Response(JSON.stringify({ error: 'Invalid token' }), {
+        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+    const body = await req.json();
+    const { action } = body;
+
+    if (action === 'sync_program_scores') {
+      const { scenarioNames } = body;
+
+      if (!scenarioNames || !Array.isArray(scenarioNames) || scenarioNames.length === 0) {
+        return new Response(JSON.stringify({ error: 'scenarioNames array required' }), {
+          status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      console.log(`Syncing scores for ${scenarioNames.length} scenarios, user: ${userId}`);
+
+      // Step 1: Get Kovaaks username
+      const { data: profile } = await supabase
+        .from('kovaaks_profiles')
+        .select('username')
+        .eq('user_id', userId)
+        .single();
+
+      if (!profile?.username) {
+        return new Response(JSON.stringify({ error: 'No Kovaaks profile linked. Please sync your profile first.' }), {
+          status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      const username = profile.username;
+      console.log(`Username: ${username}`);
+
+      // Build lookup: scenario name (lowercase) -> best data
+      // We'll populate this from multiple API sources
+      const scoreMap = new Map<string, { scenarioName: string; score: number; plays: number; aimType: string | null; leaderboardId: string | null }>();
+
+      // ─── Source 1: /user/scenario/total-play (paginated, all-time) ───
+      try {
+        let page = 0;
+        let totalPages = 1;
+
+        while (page < totalPages && page < 15) {
+          const url = `${KOVAAKS_BASE}/user/scenario/total-play?username=${encodeURIComponent(username)}&page=${page}&max=50&sort=score`;
+          const resp = await fetch(url);
+
+          if (!resp.ok) {
+            console.log(`total-play page ${page} failed: ${resp.status}`);
+            break;
+          }
+
+          const data = await resp.json();
+          const items = data?.data || [];
+          const total = data?.total || 0;
+          const max = data?.max || 50;
+          totalPages = Math.ceil(total / max);
+
+          for (const item of items) {
+            if (item.scenarioName) {
+              const key = item.scenarioName.toLowerCase();
+              const existing = scoreMap.get(key);
+              const score = item.score || 0;
+
+              if (!existing || score > existing.score) {
+                scoreMap.set(key, {
+                  scenarioName: item.scenarioName,
+                  score,
+                  plays: item.counts?.plays || 0,
+                  aimType: item.scenario?.aimType || null,
+                  leaderboardId: item.leaderboardId ? String(item.leaderboardId) : null,
+                });
+              }
+            }
+          }
+
+          page++;
+        }
+
+        console.log(`Source 1 (total-play): ${scoreMap.size} scenarios loaded`);
+      } catch (e) {
+        console.log(`total-play error: ${e.message}`);
+      }
+
+      // ─── Source 2: /user/activity/recent (recent high scores) ───
+      try {
+        const recentUrl = `${KOVAAKS_BASE}/user/activity/recent?username=${encodeURIComponent(username)}`;
+        const resp = await fetch(recentUrl);
+
+        if (resp.ok) {
+          const recentScores = await resp.json();
+
+          if (Array.isArray(recentScores)) {
+            for (const item of recentScores) {
+              if (item.scenarioName) {
+                const key = item.scenarioName.toLowerCase();
+                const existing = scoreMap.get(key);
+                const score = item.score || 0;
+
+                if (!existing || score > existing.score) {
+                  scoreMap.set(key, {
+                    scenarioName: item.scenarioName,
+                    score,
+                    plays: existing?.plays || 1,
+                    aimType: existing?.aimType || null,
+                    leaderboardId: item.leaderboardId ? String(item.leaderboardId) : (existing?.leaderboardId || null),
+                  });
+                }
+              }
+            }
+
+            console.log(`Source 2 (activity/recent): ${recentScores.length} items, scoreMap now ${scoreMap.size} total`);
+          }
+        } else {
+          console.log(`activity/recent failed: ${resp.status}`);
+        }
+      } catch (e) {
+        console.log(`activity/recent error: ${e.message}`);
+      }
+      
+
+      // ─── Source 3: /user/favorite/scenarios (favorites with score history) ───
+      try {
+        const favUrl = `${KOVAAKS_BASE}/user/favorite/scenarios?username=${encodeURIComponent(username)}`;
+        const resp = await fetch(favUrl);
+
+        if (resp.ok) {
+          const favorites = await resp.json();
+
+          if (Array.isArray(favorites)) {
+            for (const item of favorites) {
+              if (item.scenarioName) {
+                const key = item.scenarioName.toLowerCase();
+                const existing = scoreMap.get(key);
+                const score = item.score || 0;
+
+                if (!existing || score > existing.score) {
+                  scoreMap.set(key, {
+                    scenarioName: item.scenarioName,
+                    score,
+                    plays: existing?.plays || 0,
+                    aimType: existing?.aimType || null,
+                    leaderboardId: item.leaderboardId ? String(item.leaderboardId) : (existing?.leaderboardId || null),
+                  });
+                }
+              }
+            }
+
+            console.log(`Source 3 (favorites): ${favorites.length} items, scoreMap now ${scoreMap.size} total`);
+          }
+        } else {
+          console.log(`favorites failed: ${resp.status}`);
+        }
+      } catch (e) {
+        console.log(`favorites error: ${e.message}`);
+      }
+
+      // Test if activity/recent accepts pagination
+const testUrls = [
+  `${KOVAAKS_BASE}/user/activity/recent?username=${encodeURIComponent(username)}&max=100`,
+  `${KOVAAKS_BASE}/user/activity/recent?username=${encodeURIComponent(username)}&page=0&max=100`,
+  `${KOVAAKS_BASE}/user/activity/recent?username=${encodeURIComponent(username)}&page=1&max=10`,
+];
+for (const u of testUrls) {
+  const r = await fetch(u);
+  if (r.ok) {
+    const d = await r.json();
+    console.log(`${Array.isArray(d) ? d.length : 'N/A'} items → ${u.replace(KOVAAKS_BASE, '')}`);
+  } else {
+    console.log(`${r.status} → ${u.replace(KOVAAKS_BASE, '')}`);
+  }
+}
+
+      // ─── Step 3: Match program scenarios against scoreMap ───
+      // Try exact match first, then with/without S5 suffix
+      const matched: { programName: string; scenarioName: string; score: number; plays: number; aimType: string | null; leaderboardId: string | null }[] = [];
+
+      for (const name of scenarioNames) {
+        const key = name.toLowerCase();
+
+        // Try exact match
+        let found = scoreMap.get(key);
+
+        // Try with S5 suffix appended
+        if (!found) {
+          found = scoreMap.get(key + ' s5');
+        }
+
+        // Try without S5 suffix
+        if (!found && key.endsWith(' s5')) {
+          found = scoreMap.get(key.replace(/ s5$/, ''));
+        }
+
+        if (found) {
+          matched.push({
+            programName: name,
+            scenarioName: found.scenarioName,
+            score: found.score,
+            plays: found.plays,
+            aimType: found.aimType,
+            leaderboardId: found.leaderboardId,
+          });
+        }
+      }
+
+      console.log(`Matched ${matched.length}/${scenarioNames.length} program scenarios`);
+      if (matched.length > 0) {
+        console.log('Matched samples:', matched.slice(0, 3).map(m => `${m.programName} → ${m.score}`));
+      }
+
+      // ─── Step 4: Upsert matched scores into database ───
+      let synced = 0;
+      let errors = 0;
+
+      for (const item of matched) {
+        try {
+          // Upsert scenario
+          const { data: scenarioRow, error: scenErr } = await supabase
+            .from('scenarios')
+            .upsert(
+              {
+                name: item.programName,
+                category: item.aimType,
+                kovaaks_id: item.leaderboardId,
+                updated_at: new Date().toISOString(),
+              },
+              { onConflict: 'name' }
+            )
+            .select('id')
+            .single();
+
+          if (scenErr || !scenarioRow) {
+            console.log(`Scenario upsert failed for ${item.programName}: ${scenErr?.message}`);
+            errors++;
+            continue;
+          }
+
+          // Upsert user_scenario_stats
+          const { error: statsErr } = await supabase
+            .from('user_scenario_stats')
+            .upsert(
+              {
+                user_id: userId,
+                scenario_id: scenarioRow.id,
+                high_score: item.score,
+                total_attempts: item.plays,
+                last_played_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+              },
+              { onConflict: 'user_id,scenario_id' }
+            );
+
+          if (statsErr) {
+            console.log(`Stats upsert failed for ${item.programName}: ${statsErr.message}`);
+            errors++;
+          } else {
+            synced++;
+            console.log(`Synced: ${item.programName} = ${item.score} (${item.plays} plays)`);
+          }
+        } catch (e) {
+          console.log(`Error processing ${item.programName}: ${e.message}`);
+          errors++;
+        }
+      }
+
+      // Step 5: Return results
+      const notFound = scenarioNames.filter(
+        (n: string) => !matched.some(m => m.programName === n)
+      );
+
+      console.log(`Sync complete: ${synced} synced, ${errors} errors, ${notFound.length} not found`);
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          synced,
+          errors,
+          matched: matched.length,
+          total: scenarioNames.length,
+          notFound,
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    return new Response(JSON.stringify({ error: `Unknown action: ${action}` }), {
+      status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  } catch (err) {
+    console.error('Edge function error:', err);
+    return new Response(JSON.stringify({ error: String(err) }), {
+      status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+});

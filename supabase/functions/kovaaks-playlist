@@ -1,0 +1,706 @@
+// supabase/functions/kovaaks-playlists/index.ts
+// Separate Edge Function for playlist search, import, and benchmark data
+// Keeps the working kovaaks-sync function untouched
+import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+};
+
+const KOVAAKS_BASE = 'https://kovaaks.com/webapp-backend';
+
+serve(async (req: Request) => {
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders });
+  }
+
+  try {
+    const body = await req.json();
+    const { action } = body;
+    console.log(`=== KOVAAKS PLAYLISTS === Action: ${action}`);
+
+    const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    // ========================
+    // AUTH
+    // ========================
+    let userId: string | null = null;
+    const authHeader = req.headers.get('Authorization');
+    if (authHeader) {
+      const token = authHeader.replace('Bearer ', '');
+      try {
+        const payloadBase64 = token.split('.')[1];
+        const payload = JSON.parse(atob(payloadBase64));
+        if (payload.sub && payload.iss?.includes('supabase')) {
+          userId = payload.sub;
+        }
+      } catch (e) {
+        console.log(`JWT decode error: ${e.message}`);
+      }
+    }
+
+    if (!userId) {
+      return new Response(
+        JSON.stringify({ error: 'Authentication required' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
+      );
+    }
+
+    console.log(`User ID: ${userId}`);
+
+    // ========================
+    // ACTION: search_playlists
+    // ========================
+    if (action === 'search_playlists') {
+      const { query, page = 0, max = 20 } = body;
+      const cleanQuery = query.trim().replace(/^#/, '');
+
+      if (!query || query.trim().length === 0) {
+        return new Response(
+          JSON.stringify({ error: 'Search query is required' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+        );
+      }
+
+      console.log(`Searching playlists: "${query}" (page=${page}, max=${max})`);
+      const searchUrl = `${KOVAAKS_BASE}/playlist/playlists?page=${page}&max=${max}&search=${encodeURIComponent(cleanQuery)}`;
+      console.log(`Fetching: ${searchUrl}`);
+
+      const response = await fetch(searchUrl);
+      console.log(`Kovaaks API status: ${response.status}`);
+
+      if (!response.ok) {
+        const text = await response.text();
+        console.log(`Error response: ${text.substring(0, 200)}`);
+        return new Response(
+          JSON.stringify({ success: false, error: 'Playlist search failed', status: response.status }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+        );
+      }
+
+      const data = await response.json();
+      console.log(`Search results: ${data.total || 0} total, ${data.data?.length || 0} returned`);
+
+      return new Response(
+        JSON.stringify({ success: true, data }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+      );
+    }
+
+   // ========================
+    // ACTION: get_playlist
+    // ========================
+    if (action === 'get_playlist') {
+      const { code } = body;
+
+      if (!code || code.trim().length === 0) {
+        return new Response(
+          JSON.stringify({ error: 'Playlist code is required' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+        );
+      }
+
+      // Strip # prefix and clean
+      const cleanCode = code.trim().replace(/^#/, '');
+      console.log(`Fetching playlist by code: "${cleanCode}"`);
+
+      // Use confirmed working endpoint: /playlist/playlists?search=
+      const searchUrl = `${KOVAAKS_BASE}/playlist/playlists?page=0&max=20&search=${encodeURIComponent(cleanCode)}`;
+      console.log(`Fetching: ${searchUrl}`);
+      const response = await fetch(searchUrl);
+      console.log(`Status: ${response.status}`);
+
+      if (response.ok) {
+        const searchData = await response.json();
+        const results = searchData.data || [];
+        console.log(`Results: ${results.length}`);
+
+        // Exact match on playlistCode (case-insensitive)
+        const exactMatch = results.find(
+          (p: any) => p.playlistCode?.toLowerCase() === cleanCode.toLowerCase()
+        );
+
+        if (exactMatch) {
+          console.log(`Match: "${exactMatch.playlistName}", ${exactMatch.scenarioList?.length || 0} scenarios`);
+          return new Response(
+            JSON.stringify({ success: true, data: exactMatch }),
+            { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+          );
+        }
+
+        // Single result fallback
+        if (results.length === 1) {
+          return new Response(
+            JSON.stringify({ success: true, data: results[0] }),
+            { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+          );
+        }
+
+        // Multiple results, no exact match
+        if (results.length > 1) {
+          return new Response(
+            JSON.stringify({
+              success: false,
+              error: 'multiple_results',
+              message: `Found ${results.length} playlists but none matched the exact code.`,
+              data: results,
+            }),
+            { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+          );
+        }
+      }
+
+      console.log('Playlist not found');
+      return new Response(
+        JSON.stringify({ success: false, error: 'Playlist not found', code: cleanCode }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+      );
+    }
+
+    // ========================
+    // ACTION: import_playlist
+    // ========================
+    if (action === 'import_playlist') {
+      const { playlistData } = body;
+
+      if (!playlistData || !playlistData.playlistName) {
+        return new Response(
+          JSON.stringify({ error: 'Playlist data is required' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+        );
+      }
+
+      console.log(`Importing playlist: "${playlistData.playlistName}" (${playlistData.scenarioList?.length || 0} scenarios)`);
+
+      if (playlistData.playlistCode) {
+        const { data: existing } = await supabase
+          .from('training_programs')
+          .select('id, program_name')
+          .eq('user_id', userId)
+          .eq('playlist_code', playlistData.playlistCode)
+          .maybeSingle();
+
+        if (existing) {
+          console.log(`Playlist already imported as program: ${existing.id}`);
+          return new Response(
+            JSON.stringify({
+              success: false,
+              error: 'already_imported',
+              message: `You already have "${existing.program_name}" in your programs.`,
+              programId: existing.id,
+            }),
+            { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+          );
+        }
+      }
+
+      const { error: deactivateError } = await supabase
+        .from('training_programs')
+        .update({ is_active: false, updated_at: new Date().toISOString() })
+        .eq('user_id', userId)
+        .eq('is_active', true);
+
+      if (deactivateError) {
+        console.log(`Deactivate error (non-critical): ${JSON.stringify(deactivateError)}`);
+      }
+
+      const { data: program, error: programError } = await supabase
+        .from('training_programs')
+        .insert({
+          user_id: userId,
+          program_name: playlistData.playlistName,
+          description: playlistData.description || '',
+          program_type: 'playlist',
+          source_type: 'kovaaks_playlist',
+          playlist_code: playlistData.playlistCode || null,
+          playlist_id: playlistData.playlistId || null,
+          playlist_author: playlistData.webappUsername || playlistData.steamAccountName || 'Unknown',
+          aim_type: playlistData.aimType || 'Mixed',
+          subscribers: playlistData.subscribers || 0,
+          playlist_duration: playlistData.playlistDuration || 0,
+          scenario_count: playlistData.scenarioList?.length || 0,
+          scenarios_data: playlistData.scenarioList || [],
+          is_active: true,
+          is_completed: false,
+        })
+        .select()
+        .single();
+
+      if (programError || !program) {
+        console.log(`Program creation error: ${JSON.stringify(programError)}`);
+        return new Response(
+          JSON.stringify({ success: false, error: 'Failed to save program', details: programError?.message }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+        );
+      }
+
+      console.log(`Program created: ${program.id}`);
+
+      const scenarioList = playlistData.scenarioList || [];
+      if (scenarioList.length > 0) {
+        const completions = scenarioList.map((s: any) => ({
+          user_id: userId,
+          program_id: program.id,
+          scenario_name: s.scenarioName,
+          status: 'pending',
+        }));
+
+        const { error: completionError } = await supabase
+          .from('program_scenario_completions')
+          .insert(completions);
+
+        if (completionError) {
+          console.log(`Completion entries error: ${JSON.stringify(completionError)}`);
+        } else {
+          console.log(`Created ${completions.length} scenario completion entries`);
+        }
+      }
+
+      for (const s of scenarioList) {
+        if (s.scenarioName) {
+          await supabase.from('scenarios').upsert({
+            name: s.scenarioName,
+            category: s.aimType || null,
+            updated_at: new Date().toISOString(),
+          }, {
+            onConflict: 'name',
+            ignoreDuplicates: true,
+          });
+        }
+      }
+      console.log('Scenarios table enriched with aimType data');
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          programId: program.id,
+          programName: program.program_name,
+          scenarioCount: scenarioList.length,
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+      );
+    }
+
+    // ========================
+    // ACTION: get_benchmarks
+    // ========================
+    if (action === 'get_benchmarks') {
+      const { username, page = 0, max = 100 } = body;
+
+      if (!username || username.trim().length === 0) {
+        return new Response(
+          JSON.stringify({ error: 'Username is required' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+        );
+      }
+
+      console.log(`Fetching benchmarks for: "${username}"`);
+      const benchmarkUrl = `${KOVAAKS_BASE}/benchmarks/progress/by-username?username=${encodeURIComponent(username.trim())}&page=${page}&max=${max}`;
+      console.log(`Fetching: ${benchmarkUrl}`);
+
+      const response = await fetch(benchmarkUrl);
+      console.log(`Kovaaks API status: ${response.status}`);
+
+      if (!response.ok) {
+        const text = await response.text();
+        console.log(`Error response: ${text.substring(0, 200)}`);
+        return new Response(
+          JSON.stringify({ success: false, error: 'Benchmark fetch failed', status: response.status }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+        );
+      }
+
+      const data = await response.json();
+      console.log(`Benchmarks found: ${data.total || data.data?.length || 0}`);
+
+      return new Response(
+        JSON.stringify({ success: true, data }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+      );
+    }
+
+    // ========================
+    // ACTION: get_benchmark_scores
+    // ========================
+    if (action === 'get_benchmark_scores') {
+      const { benchmarkId, steamId } = body;
+
+      if (!benchmarkId || !steamId) {
+        return new Response(
+          JSON.stringify({ error: 'benchmarkId and steamId are required' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+        );
+      }
+
+      console.log(`Fetching benchmark scores: benchmarkId=${benchmarkId}, steamId=${steamId}`);
+      const scoresUrl = `${KOVAAKS_BASE}/benchmarks/player-progress-rank-benchmark?benchmarkId=${benchmarkId}&steamId=${steamId}`;
+      console.log(`Fetching: ${scoresUrl}`);
+
+      const response = await fetch(scoresUrl);
+      console.log(`Kovaaks API status: ${response.status}`);
+
+      if (!response.ok) {
+        const text = await response.text();
+        console.log(`Error response: ${text.substring(0, 300)}`);
+        return new Response(
+          JSON.stringify({ success: false, error: `Benchmark scores fetch failed (${response.status})` }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+        );
+      }
+
+      const data = await response.json();
+
+      let scenarioCount = 0;
+      const categoryNames: string[] = [];
+      if (data.categories) {
+        for (const [catName, catData] of Object.entries(data.categories) as [string, any][]) {
+          categoryNames.push(catName);
+          if (catData.scenarios) {
+            scenarioCount += Object.keys(catData.scenarios).length;
+          }
+        }
+      }
+      console.log(`Benchmark scores received: overall_rank=${data.overall_rank}, categories=[${categoryNames.join(', ')}], total_scenarios=${scenarioCount}`);
+
+      if (data.ranks && data.ranks.length > 0) {
+        const rankNames = data.ranks.map((r: any) => r.name).join(', ');
+        console.log(`Rank tiers: ${rankNames}`);
+      }
+
+      return new Response(
+        JSON.stringify({ success: true, data }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+      );
+    }
+
+    // ========================
+    // ACTION: sync_benchmark_scores
+    // ========================
+    // Fetches real-time scores from Kovaaks benchmark API, then upserts
+    // them into scenarios + user_scenario_stats tables server-side.
+    //
+    // RULES:
+    //   - Scores from API are ALWAYS ×100 → divide by 100 for storage
+    //   - Thresholds (rank_maxes) are REAL values → store as-is
+    //   - rank_maxes[0] maps to first REAL rank (not "No Rank")
+    //   - Rank names and colors captured dynamically per benchmark
+    //
+    // Input:  { action: 'sync_benchmark_scores', benchmarkId: 458, steamId: '76561198008792117' }
+    // Output: { success: true, synced: 18, skipped: 0, errors: 0, details: [...] }
+    if (action === 'sync_benchmark_scores') {
+      const { benchmarkId, steamId } = body;
+
+      if (!benchmarkId || !steamId) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'benchmarkId and steamId are required' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+        );
+      }
+
+      console.log(`=== SYNC BENCHMARK SCORES === benchmarkId=${benchmarkId}, steamId=${steamId}, userId=${userId}`);
+
+      // Step 1: Fetch scores from Kovaaks API
+      const scoresUrl = `${KOVAAKS_BASE}/benchmarks/player-progress-rank-benchmark?benchmarkId=${benchmarkId}&steamId=${steamId}`;
+      console.log(`Fetching: ${scoresUrl}`);
+
+      const response = await fetch(scoresUrl);
+      if (!response.ok) {
+        const text = await response.text();
+        console.error(`Kovaaks API error ${response.status}: ${text.substring(0, 300)}`);
+        return new Response(
+          JSON.stringify({ success: false, error: `Kovaaks API returned ${response.status}` }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+        );
+      }
+
+      const benchmarkData = await response.json();
+
+      // Capture rank tier names from the API response
+      // API returns ranks ordered lowest to highest, often including "No Rank" at index 0
+      const allRankNames: string[] = [];
+      if (benchmarkData.ranks && Array.isArray(benchmarkData.ranks)) {
+        for (const r of benchmarkData.ranks) {
+          if (r.name) {
+            allRankNames.push(r.name);
+          }
+        }
+      }
+
+      // Filter out "No Rank" — rank_maxes array maps to real ranks only
+      // e.g. Viscose: [No Rank, Lemming, Hare, ...] → realRankNames = [Lemming, Hare, ...]
+      // e.g. Voltaic: [No Rank, Iron, Bronze, ...] → realRankNames = [Iron, Bronze, ...]
+      const realRankNames = allRankNames.filter(n => n.toLowerCase() !== 'no rank');
+      console.log(`Rank tiers captured: ${realRankNames.join(', ')}`);
+
+      // Rank color lookup — uses rank NAME to assign the correct color
+      // Voltaic ranks have well-known community colors; unknown ranks get a fallback gradient
+      const KNOWN_RANK_COLORS: Record<string, string> = {
+        // Voltaic ranks
+        'iron':     '#878787',
+        'bronze':   '#CD7F32',
+        'silver':   '#C0C0C0',
+        'gold':     '#FFD700',
+        'platinum': '#3EDBD3',
+        'diamond':  '#B9F2FF',
+        'jade':     '#00A86B',
+        'master':   '#FF4655',
+        // Viscose ranks
+        'lemming':  '#8B8FA3',
+        'hare':     '#C4956A',
+        'ermine':   '#B8C4D0',
+        'penguin':  '#F5C842',
+        'fox':      '#E8833A',
+        'mammoth':  '#7B68EE',
+        'orca':     '#2EC4B6',
+        'seal':     '#FF3F6F',
+      };
+
+      // Fallback gradient for completely unknown rank names
+      const FALLBACK_COLORS = [
+        '#878787', '#CD7F32', '#C0C0C0', '#FFD700',
+        '#3EDBD3', '#B9F2FF', '#00A86B', '#FF4655', '#FF00FF',
+      ];
+
+      function getRankColor(rankName: string, index: number): string {
+        return KNOWN_RANK_COLORS[rankName.toLowerCase()] || FALLBACK_COLORS[index] || '#808080';
+      }
+
+      if (!benchmarkData.categories) {
+        console.warn('No categories in benchmark response');
+        return new Response(
+          JSON.stringify({ success: false, error: 'No categories returned from benchmark' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+        );
+      }
+
+      // Step 2: Parse all scenarios from all categories
+      const scenariosToSync: {
+        name: string;
+        score: number;
+        rank: number;
+        category: string;
+        rankTiers: { name: string; color: string; threshold: number }[];
+      }[] = [];
+
+      for (const [catName, catData] of Object.entries(benchmarkData.categories as Record<string, any>)) {
+        if (!catData.scenarios) continue;
+
+        for (const [scenarioName, scenarioData] of Object.entries(catData.scenarios as Record<string, any>)) {
+          const rawMaxes: number[] = scenarioData.rank_maxes || [];
+          const rawScore: number = scenarioData.score || 0;
+
+          // Build rank tiers: pair realRankNames[i] with rank_maxes[i]
+          // Score is ALWAYS divided by 100 (API convention).
+          // Thresholds need auto-detection:
+          //   - Voltaic: thresholds are ×100 (like raw scores) → divide by 100
+          //   - Viscose: thresholds are already real values → keep as-is
+          // Heuristic: if first threshold is >10× the adjusted score, thresholds are ×100
+          const adjustedScore = rawScore / 100;
+          const firstThreshold = rawMaxes.length > 0 ? rawMaxes[0] : 0;
+          const thresholdsAreMultiplied = adjustedScore > 0 && firstThreshold > 0 && (firstThreshold / adjustedScore) > 10;
+          const thresholdDivisor = thresholdsAreMultiplied ? 100 : 1;
+
+          const rankTiers: { name: string; color: string; threshold: number }[] = [];
+          for (let i = 0; i < rawMaxes.length && i < realRankNames.length; i++) {
+            rankTiers.push({
+              name: realRankNames[i],
+              color: getRankColor(realRankNames[i], i),
+              threshold: rawMaxes[i] / thresholdDivisor,
+            });
+          }
+
+          scenariosToSync.push({
+            name: scenarioName,
+            score: rawScore / 100,
+            rank: scenarioData.rank || scenarioData.scenario_rank || 0,
+            category: catName,
+            rankTiers,
+          });
+        }
+      }
+
+      console.log(`Found ${scenariosToSync.length} scenarios across ${Object.keys(benchmarkData.categories).length} categories`);
+
+      // Step 3: For each scenario — ensure it exists in scenarios table, then upsert stats
+      let synced = 0;
+      let skipped = 0;
+      let errors = 0;
+      const details: { name: string; score: number; status: string }[] = [];
+
+      for (const s of scenariosToSync) {
+        try {
+          // Skip scenarios with no score
+          if (!s.score || s.score <= 0) {
+            skipped++;
+            details.push({ name: s.name, score: 0, status: 'no_score' });
+            continue;
+          }
+
+          // Step 3a: Find or create the scenario
+          let scenarioId: string | null = null;
+
+          const aimType = s.category.toLowerCase().includes('click') ? 'Clicking'
+            : s.category.toLowerCase().includes('track') ? 'Tracking'
+            : s.category.toLowerCase().includes('switch') ? 'Switching'
+            : null;
+
+          const { data: existing } = await supabase
+            .from('scenarios')
+            .select('id')
+            .eq('name', s.name)
+            .single();
+
+          if (existing) {
+            scenarioId = existing.id;
+            // Always update thresholds (they may change between benchmark versions)
+            if (s.rankTiers.length > 0) {
+              await supabase
+                .from('scenarios')
+                .update({
+                  rank_thresholds: { tiers: s.rankTiers },
+                  voltaic_benchmark: true,
+                  updated_at: new Date().toISOString(),
+                })
+                .eq('id', scenarioId);
+            }
+          } else {
+            // Insert new scenario
+            const { data: inserted, error: insertErr } = await supabase
+              .from('scenarios')
+              .insert({
+                name: s.name,
+                category: aimType,
+                voltaic_benchmark: true,
+                rank_thresholds: s.rankTiers.length > 0 ? { tiers: s.rankTiers } : null,
+              })
+              .select('id')
+              .single();
+
+            if (insertErr) {
+              // Race condition / duplicate — try select again
+              const { data: retry } = await supabase
+                .from('scenarios')
+                .select('id')
+                .eq('name', s.name)
+                .single();
+              scenarioId = retry?.id || null;
+            } else {
+              scenarioId = inserted?.id || null;
+            }
+          }
+
+          if (!scenarioId) {
+            console.error(`Could not resolve scenario_id for: ${s.name}`);
+            errors++;
+            details.push({ name: s.name, score: s.score, status: 'scenario_not_found' });
+            continue;
+          }
+
+          // Step 3b: Map rank number to rank name using benchmark's own names
+          // API rank is 1-indexed: rank=1 → realRankNames[0], rank=2 → realRankNames[1]
+          const rankName = (s.rank > 0 && s.rank <= realRankNames.length)
+            ? realRankNames[s.rank - 1]
+            : 'Unranked';
+
+          // Step 3c: Upsert into user_scenario_stats
+          // Score already divided by 100 in Step 2
+          const { error: upsertErr } = await supabase
+            .from('user_scenario_stats')
+            .upsert(
+              {
+                user_id: userId,
+                scenario_id: scenarioId,
+                high_score: s.score,
+                current_rank: rankName,
+                last_played_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+              },
+              { onConflict: 'user_id,scenario_id' }
+            );
+
+          if (upsertErr) {
+            console.error(`Upsert failed for ${s.name}: ${upsertErr.message}`);
+            errors++;
+            details.push({ name: s.name, score: s.score, status: 'upsert_failed' });
+          } else {
+            synced++;
+            details.push({ name: s.name, score: s.score, status: 'synced' });
+          }
+        } catch (err: any) {
+          console.error(`Error processing ${s.name}: ${err.message}`);
+          errors++;
+          details.push({ name: s.name, score: s.score, status: 'error' });
+        }
+      }
+
+      console.log(`=== SYNC COMPLETE === synced=${synced}, skipped=${skipped}, errors=${errors}`);
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          synced,
+          skipped,
+          errors,
+          total: scenariosToSync.length,
+          overall_rank: benchmarkData.overall_rank,
+          benchmark_progress: benchmarkData.benchmark_progress,
+          details,
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+      );
+    }
+
+    // ========================
+    // ACTION: get_scenario_details
+    // ========================
+    if (action === 'get_scenario_details') {
+      const { leaderboardId } = body;
+
+      if (!leaderboardId) {
+        return new Response(
+          JSON.stringify({ error: 'Leaderboard ID is required' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+        );
+      }
+
+      console.log(`Fetching scenario details for leaderboardId: ${leaderboardId}`);
+      const detailsUrl = `${KOVAAKS_BASE}/scenario/details?leaderboardId=${leaderboardId}`;
+
+      const response = await fetch(detailsUrl);
+      console.log(`Kovaaks API status: ${response.status}`);
+
+      if (!response.ok) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'Scenario not found' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+        );
+      }
+
+      const data = await response.json();
+      console.log(`Scenario: "${data.scenarioName}", aimType: ${data.aimType}`);
+
+      return new Response(
+        JSON.stringify({ success: true, data }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+      );
+    }
+
+    // Unknown action
+    return new Response(
+      JSON.stringify({ error: `Unknown action: ${action}` }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+    );
+
+  } catch (err) {
+    console.error(`Edge Function error: ${err.message}`);
+    return new Response(
+      JSON.stringify({ error: err.message }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
+    );
+  }
+});
