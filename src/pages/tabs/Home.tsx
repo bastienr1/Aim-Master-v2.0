@@ -341,6 +341,7 @@ export function Home({ profile, onNavigate, onRefresh, onTriggerCheckin }: HomeP
         strongest,
         suggestedScenario,
         totalStats: catStats?.length || 0,
+        catAverages,
       });
     } catch {
       setErrorCoach(true);
@@ -781,7 +782,10 @@ export function Home({ profile, onNavigate, onRefresh, onTriggerCheckin }: HomeP
           ) : errorCharts ? (
             <SectionError onRetry={loadCharts} label="charts" />
           ) : (
-            <SkillRadar distribution={chartData?.distribution} />
+            <SkillRadar
+              distribution={chartData?.distribution}
+              categoryScores={coachData?.catAverages}
+            />
           )}
         </div>
 

@@ -7,10 +7,11 @@ import { useSkillRadarData } from '@/hooks/useSkillRadarData';
 
 interface SkillRadarProps {
   distribution: { name: string; value: number }[] | null | undefined;
+  categoryScores?: { category: string; avg: number }[] | null;
 }
 
-export function SkillRadar({ distribution }: SkillRadarProps) {
-  const { radarData, strongest, weakest, hasData } = useSkillRadarData(distribution);
+export function SkillRadar({ distribution, categoryScores }: SkillRadarProps) {
+  const { radarData, strongest, weakest, hasData, dataSource } = useSkillRadarData(distribution, categoryScores);
 
   return (
     <div className="bg-[#2A3A47] border border-white/10 rounded-xl p-6">
@@ -19,7 +20,7 @@ export function SkillRadar({ distribution }: SkillRadarProps) {
           Battle Stats
         </h3>
         <span className="text-[11px] font-['Inter'] text-[#5A6872] bg-[#0F1923] px-2 py-1 rounded-full">
-          Based on synced data
+          {dataSource === 'scores' ? 'Based on performance' : 'Based on play volume'}
         </span>
       </div>
 
