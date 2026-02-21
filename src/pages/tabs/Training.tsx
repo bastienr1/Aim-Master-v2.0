@@ -17,6 +17,8 @@ import {
 import { PreTrainingCheckin } from '@/components/mental-game/PreTrainingCheckin';
 import { usePreTrainingGate } from '@/hooks/usePreTrainingGate';
 import { PlaylistIntroduction } from '@/components/training/PlaylistIntroduction';
+import { VerifiedBadge } from '@/components/training/VerifiedBadge';
+import { VerifiedShieldIcon } from '@/components/icons/VerifiedShieldIcon';
 
 interface TrainingProps {
   profile: any;
@@ -89,6 +91,18 @@ function findBenchmarkId(programName: string): number | null {
   if (lower.includes('viscose') && lower.includes('medium')) return 687;
   if (lower.includes('viscose') && lower.includes('hard')) return 688;
   return null;
+}
+
+function isVerifiedPlaylist(name: string): boolean {
+  return findBenchmarkId(name) !== null;
+}
+
+function isVerifiedSearchResult(playlistName: string): boolean {
+  const lower = playlistName.toLowerCase();
+  return (
+    (lower.includes('voltaic') && lower.includes('s5')) ||
+    (lower.includes('viscose') && lower.includes('benchmark'))
+  );
 }
 
 function extractPlaylists(data: any): PlaylistSearchResult[] {
@@ -552,9 +566,14 @@ function SearchResultCard({
     <div className="bg-[#2A3A47] border border-white/10 rounded-xl p-5 hover:border-white/20 transition-all">
       <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
         <div className="flex-1 min-w-0">
-          <h3 className="font-['Rajdhani'] text-lg font-semibold text-[#ECE8E1] leading-tight">
-            {playlist.playlistName}
-          </h3>
+          <div className="flex items-center gap-2 flex-wrap">
+            <h3 className="font-['Rajdhani'] text-lg font-semibold text-[#ECE8E1] leading-tight">
+              {playlist.playlistName}
+            </h3>
+            {isVerifiedSearchResult(playlist.playlistName) && (
+              <VerifiedBadge variant="tag" />
+            )}
+          </div>
           <p className="text-[#9CA8B3] text-xs font-['Inter'] mt-1">
             by <span className="text-[#ECE8E1]/70">{author}</span>
           </p>
@@ -685,6 +704,9 @@ function ProgramCard({
             >
               {program.aim_type}
             </span>
+          )}
+          {isVerifiedPlaylist(program.program_name) && (
+            <VerifiedBadge variant="tag" />
           )}
           <span className="text-[#9CA8B3] text-xs font-['Inter']">
             <span className="font-['JetBrains_Mono']">{program.scenario_count}</span> scenarios
@@ -873,6 +895,19 @@ function ActiveProgramView({
                 </span>
               )}
             </div>
+            {isVerifiedPlaylist(program.program_name) && (
+              <div className="mt-2 mb-1">
+                <div className="flex items-center gap-2">
+                  <VerifiedShieldIcon size={20} />
+                  <span className="text-[#FFCA3A] text-xs font-bold font-['Inter'] uppercase tracking-wider">
+                    Verified Learning Path
+                  </span>
+                </div>
+                <p className="text-[#5A6872] text-[11px] font-['Inter'] mt-1 ml-7">
+                  Full rank tracking &amp; coaching enabled
+                </p>
+              </div>
+            )}
             <div className="flex flex-wrap items-center gap-3 mt-2">
               {program.playlist_author && (
                 <span className="text-[#9CA8B3] text-xs font-['Inter']">
