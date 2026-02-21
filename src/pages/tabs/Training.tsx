@@ -98,11 +98,7 @@ function isVerifiedPlaylist(name: string): boolean {
 }
 
 function isVerifiedSearchResult(playlistName: string): boolean {
-  const lower = playlistName.toLowerCase();
-  return (
-    (lower.includes('voltaic') && lower.includes('s5')) ||
-    (lower.includes('viscose') && lower.includes('benchmark'))
-  );
+  return findBenchmarkId(playlistName) !== null;
 }
 
 function extractPlaylists(data: any): PlaylistSearchResult[] {
