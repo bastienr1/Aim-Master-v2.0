@@ -53,8 +53,33 @@ export default function Dashboard() {
   const { showDebrief, triggerDebrief, dismissDebrief, completeDebrief } = usePostSessionGate();
   const { sessionData, detectSession, clearSession } = useSessionDetection();
 
+  // ─── Session lifecycle state ───
+  const [sessionActive, setSessionActive] = useState(false);
+
+  const handleSessionStart = useCallback(() => {
+    setSessionActive(true);
+  }, []);
+
+  const handleSessionEnd = useCallback(() => {
+    setSessionActive(false);
+  }, []);
+
   // CHANGE 1 — Pending intent state
   const [pendingIntent, setPendingIntent] = useState<{ intent: string; autoLoaded: boolean } | null>(null);
+
+  // ─── Sync & Debrief handler (called by WelcomeBackCard and End Session button) ───
+  const handleSyncAndDebrief = useCallback(async (): Promise<boolean> => {
+    const session = await detectSession();
+    if (session) {
+      const triggered = await triggerDebrief();
+      if (triggered) {
+        handleSessionEnd();
+        return true;
+      }
+    }
+    handleSessionEnd();
+    return false;
+  }, [detectSession, triggerDebrief, handleSessionEnd]);
 
   // CHANGE 2 — Intent handlers
   const handleIntentComplete = useCallback((intent: string) => {
@@ -64,19 +89,6 @@ export default function Dashboard() {
   const handleSwitchToTraining = useCallback(() => {
     setActiveTab('training');
   }, []);
-
-  // Auto-trigger session detection when player returns (tab focus)
-  useEffect(() => {
-    const handleFocus = async () => {
-      const session = await detectSession();
-      if (session) {
-        await triggerDebrief();
-      }
-    };
-
-    window.addEventListener('focus', handleFocus);
-    return () => window.removeEventListener('focus', handleFocus);
-  }, [detectSession, triggerDebrief]);
 
   useEffect(() => {
     sessionStorage.setItem('aim-master-tab', activeTab);
@@ -257,6 +269,10 @@ export default function Dashboard() {
             onRefresh={loadProfile}
             pendingIntent={pendingIntent}
             onClearIntent={() => setPendingIntent(null)}
+            sessionActive={sessionActive}
+            onSessionStart={handleSessionStart}
+            onSyncAndDebrief={handleSyncAndDebrief}
+            onSessionCancel={handleSessionEnd}
           />
         </div>
         <div style={{ display: activeTab === 'mental' ? 'block' : 'none' }}>

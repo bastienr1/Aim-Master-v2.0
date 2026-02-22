@@ -19,12 +19,17 @@ import { usePreTrainingGate } from '@/hooks/usePreTrainingGate';
 import { PlaylistIntroduction } from '@/components/training/PlaylistIntroduction';
 import { VerifiedBadge } from '@/components/training/VerifiedBadge';
 import { VerifiedShieldIcon } from '@/components/icons/VerifiedShieldIcon';
+import { WelcomeBackCard } from '@/components/post-session/WelcomeBackCard';
 
 interface TrainingProps {
   profile: any;
   onRefresh: () => Promise<void>;
   pendingIntent?: { intent: string; autoLoaded: boolean } | null;
   onClearIntent?: () => void;
+  sessionActive?: boolean;
+  onSessionStart?: () => void;
+  onSyncAndDebrief?: () => Promise<boolean>;
+  onSessionCancel?: () => void;
 }
 
 interface ScoreInfo {
@@ -115,7 +120,7 @@ function extractPlaylists(data: any): PlaylistSearchResult[] {
   return raw.filter(Boolean) as PlaylistSearchResult[];
 }
 
-export function Training({ profile: _profile, onRefresh: _onRefresh, pendingIntent, onClearIntent }: TrainingProps) {
+export function Training({ profile: _profile, onRefresh: _onRefresh, pendingIntent, onClearIntent, sessionActive, onSessionStart, onSyncAndDebrief, onSessionCancel }: TrainingProps) {
   const { user } = useAuth();
 
   // Pre-training check-in gate — NO auto-trigger on page load
@@ -396,6 +401,10 @@ export function Training({ profile: _profile, onRefresh: _onRefresh, pendingInte
           setShowIntroduction(false);
           onClearIntent?.();
         }}
+        sessionActive={sessionActive}
+        onSessionStart={onSessionStart}
+        onSyncAndDebrief={onSyncAndDebrief}
+        onSessionCancel={onSessionCancel}
       />
     );
   }
@@ -769,6 +778,10 @@ function ActiveProgramView({
   showIntroduction,
   pendingIntent,
   onDismissIntroduction,
+  sessionActive,
+  onSessionStart,
+  onSyncAndDebrief,
+  onSessionCancel,
 }: {
   program: TrainingProgram;
   completions: ScenarioCompletion[];
@@ -780,11 +793,33 @@ function ActiveProgramView({
   showIntroduction?: boolean;
   pendingIntent?: { intent: string; autoLoaded: boolean } | null;
   onDismissIntroduction?: () => void;
+  sessionActive?: boolean;
+  onSessionStart?: () => void;
+  onSyncAndDebrief?: () => Promise<boolean>;
+  onSessionCancel?: () => void;
 }) {
   const { user } = useAuth();
   const [syncing, setSyncing] = useState(false);
   const [viewMode, setViewMode] = useState<'card' | 'list'>('card');
   const [copiedCode, setCopiedCode] = useState(false);
+  const [showWelcomeBack, setShowWelcomeBack] = useState(false);
+
+  // Detect when user returns to the app while session is active
+  useEffect(() => {
+    if (!sessionActive) {
+      setShowWelcomeBack(false);
+      return;
+    }
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible' && sessionActive) {
+        setShowWelcomeBack(true);
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
+  }, [sessionActive]);
 
   const scenarios: any[] = Array.isArray(program.scenarios_data) ? program.scenarios_data.filter(Boolean) : [];
   const completionMap = new Map(completions.map((c) => [c.scenario_name, c]));
@@ -946,6 +981,23 @@ function ActiveProgramView({
           </div>
 
           <div className="flex items-center gap-3 shrink-0">
+            {sessionActive && (
+              <button
+                onClick={async () => {
+                  if (onSyncAndDebrief) {
+                    const found = await onSyncAndDebrief();
+                    if (!found) {
+                      onSessionCancel?.();
+                      setShowWelcomeBack(false);
+                    }
+                  }
+                }}
+                className="bg-[#53CADC] hover:bg-[#53CADC]/90 text-white rounded-lg px-4 py-2 text-sm font-semibold font-['Inter'] flex items-center gap-2 transition-colors"
+              >
+                <CheckCircle className="w-4 h-4" />
+                End Session
+              </button>
+            )}
             <div className="flex items-center bg-[#1C2B36] border border-white/10 rounded-lg p-0.5">
               <button
                 onClick={() => setViewMode('card')}
@@ -1014,52 +1066,66 @@ function ActiveProgramView({
         </div>
       </div>
 
-      {/* Steam Deep Link — Launch KovaaK's */}
+      {/* Steam Deep Link / Welcome Back — Session Lifecycle */}
       {program.playlist_code && (
-        <div className="mt-4 bg-gradient-to-r from-[#1C2B36] to-[#1C2B36] border border-[#FF4655]/20 rounded-xl p-5">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div className="flex-1 min-w-0">
-              <h3 className="font-['Rajdhani'] text-base font-semibold text-[#ECE8E1] mb-1">
-                Ready to train?
-              </h3>
-              <p className="text-[#9CA8B3] text-xs font-['Inter']">
-                Click launch to open KovaaK's and jump straight into the playlist. No manual import needed.
-              </p>
+        showWelcomeBack && onSyncAndDebrief ? (
+          <WelcomeBackCard
+            onSyncAndDebrief={async () => {
+              const found = await onSyncAndDebrief();
+              if (!found) {
+                setShowWelcomeBack(false);
+              }
+              return found;
+            }}
+            onNotDoneYet={() => setShowWelcomeBack(false)}
+          />
+        ) : (
+          <div className="mt-4 bg-gradient-to-r from-[#1C2B36] to-[#1C2B36] border border-[#FF4655]/20 rounded-xl p-5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="flex-1 min-w-0">
+                <h3 className="font-['Rajdhani'] text-base font-semibold text-[#ECE8E1] mb-1">
+                  Ready to train?
+                </h3>
+                <p className="text-[#9CA8B3] text-xs font-['Inter']">
+                  Click launch to open KovaaK's and jump straight into the playlist. No manual import needed.
+                </p>
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(program.playlist_code!);
+                    setCopiedCode(true);
+                    setTimeout(() => setCopiedCode(false), 2000);
+                  }}
+                  className="mt-2 inline-flex items-center gap-1.5 text-[#53CADC] hover:text-[#53CADC]/80 text-xs font-['JetBrains_Mono'] transition-colors"
+                >
+                  {copiedCode ? (
+                    <>
+                      <Check className="w-3.5 h-3.5 text-[#3DD598]" />
+                      <span className="text-[#3DD598]">Copied!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-3.5 h-3.5" />
+                      {program.playlist_code}
+                    </>
+                  )}
+                </button>
+              </div>
               <button
                 onClick={() => {
                   navigator.clipboard.writeText(program.playlist_code!);
                   setCopiedCode(true);
                   setTimeout(() => setCopiedCode(false), 2000);
+                  onSessionStart?.();
+                  window.open(`steam://run/824270/?action=jump-to-playlist;sharecode=${program.playlist_code}`, '_self');
                 }}
-                className="mt-2 inline-flex items-center gap-1.5 text-[#53CADC] hover:text-[#53CADC]/80 text-xs font-['JetBrains_Mono'] transition-colors"
+                className="bg-[#FF4655] hover:bg-[#FF4655]/90 text-white rounded-xl px-6 py-3 text-sm font-semibold font-['Inter'] flex items-center gap-2 transition-all shadow-lg shadow-[#FF4655]/20 shrink-0"
               >
-                {copiedCode ? (
-                  <>
-                    <Check className="w-3.5 h-3.5 text-[#3DD598]" />
-                    <span className="text-[#3DD598]">Copied!</span>
-                  </>
-                ) : (
-                  <>
-                    <Copy className="w-3.5 h-3.5" />
-                    {program.playlist_code}
-                  </>
-                )}
+                <ExternalLink className="w-4 h-4" />
+                Launch KovaaK's
               </button>
             </div>
-            <button
-              onClick={() => {
-                navigator.clipboard.writeText(program.playlist_code!);
-                setCopiedCode(true);
-                setTimeout(() => setCopiedCode(false), 2000);
-                window.open(`steam://run/824270/?action=jump-to-playlist;sharecode=${program.playlist_code}`, '_self');
-              }}
-              className="bg-[#FF4655] hover:bg-[#FF4655]/90 text-white rounded-xl px-6 py-3 text-sm font-semibold font-['Inter'] flex items-center gap-2 transition-all shadow-lg shadow-[#FF4655]/20 shrink-0"
-            >
-              <ExternalLink className="w-4 h-4" />
-              Launch KovaaK's
-            </button>
           </div>
-        </div>
+        )
       )}
 
       {/* Playlist Introduction — shown above scenarios when auto-loaded */}
