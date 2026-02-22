@@ -58,19 +58,19 @@ export default function Dashboard() {
   // ─── Session lifecycle state ───
   const [sessionActive, setSessionActive] = useState(false);
   const [showWelcomeBack, setShowWelcomeBack] = useState(false);
-  const [showFloatingBar, setShowFloatingBar] = useState(false);
+  const [welcomeBackMinimized, setWelcomeBackMinimized] = useState(false);
 
   const handleSessionStart = useCallback(() => {
     setSessionActive(true);
     setShowWelcomeBack(true);
-    setShowFloatingBar(false);
+    setWelcomeBackMinimized(false);
     resetDetection();
   }, [resetDetection]);
 
   const handleSessionEnd = useCallback(() => {
     setSessionActive(false);
     setShowWelcomeBack(false);
-    setShowFloatingBar(false);
+    setWelcomeBackMinimized(false);
   }, []);
 
   // CHANGE 1 — Pending intent state
@@ -110,6 +110,7 @@ export default function Dashboard() {
 
     // Always open debrief — triggerDebrief checks cooldown, force-bypass it
     setShowWelcomeBack(false);
+    setWelcomeBackMinimized(false);
     const triggered = await triggerDebrief();
     console.log('[handleSyncAndDebrief] triggerDebrief result:', triggered);
 
@@ -125,15 +126,12 @@ export default function Dashboard() {
     return true;
   }, [detectSession, triggerDebrief, handleSessionEnd, setEmptySessionData, forceShowDebrief]);
 
-  // Focus listener: re-show Welcome Back modal on return, or fallback auto-detect
+  // Focus listener: ensure modal is visible on return, or fallback auto-detect
   useEffect(() => {
     const handleFocus = async () => {
       if (sessionActive) {
-        // If floating bar is showing, user chose "Not done yet" — respect that choice
-        // Only re-show modal if neither modal nor floating bar is visible
-        if (!showFloatingBar) {
-          setShowWelcomeBack(true);
-        }
+        // Session active → ensure modal is showing (may be minimized, that's fine)
+        setShowWelcomeBack(true);
         return;
       }
       // No explicit session → try auto-detect debrief (original behavior)
@@ -145,7 +143,7 @@ export default function Dashboard() {
 
     window.addEventListener('focus', handleFocus);
     return () => window.removeEventListener('focus', handleFocus);
-  }, [sessionActive, showFloatingBar, detectSession, triggerDebrief]);
+  }, [sessionActive, detectSession, triggerDebrief]);
 
   // CHANGE 2 — Intent handlers
   const handleIntentComplete = useCallback((intent: string) => {
@@ -204,52 +202,11 @@ export default function Dashboard() {
       {/* Welcome Back modal — session active confirmation + debrief trigger */}
       <WelcomeBackModal
         isOpen={showWelcomeBack && sessionActive && !showDebrief}
+        minimized={welcomeBackMinimized}
         onSyncAndDebrief={handleSyncAndDebrief}
-        onNotDoneYet={() => {
-          setShowWelcomeBack(false);
-          setShowFloatingBar(true);
-        }}
-        onDismiss={() => {
-          setShowWelcomeBack(false);
-          setShowFloatingBar(true);
-        }}
+        onMinimize={() => setWelcomeBackMinimized(true)}
+        onExpand={() => setWelcomeBackMinimized(false)}
       />
-
-      {/* Floating session control bar — shown when modal is dismissed */}
-      {showFloatingBar && sessionActive && !showDebrief && !showWelcomeBack && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 animate-slide-up">
-          <div className="flex items-center gap-2 bg-[#1C2B36] border border-[#53CADC]/30 rounded-2xl px-4 py-2.5 shadow-2xl shadow-black/40 backdrop-blur-sm">
-            {/* Pulse dot */}
-            <div className="relative flex items-center justify-center w-2.5 h-2.5 shrink-0">
-              <div className="absolute w-2.5 h-2.5 rounded-full bg-[#53CADC] animate-ping opacity-40" />
-              <div className="w-2 h-2 rounded-full bg-[#53CADC]" />
-            </div>
-            <span className="text-[#9CA8B3] text-xs font-['Inter'] font-medium whitespace-nowrap">
-              Session active
-            </span>
-            <div className="w-px h-4 bg-white/10 mx-1" />
-            <button
-              onClick={() => {
-                setShowFloatingBar(false);
-                setShowWelcomeBack(true);
-              }}
-              className="text-[#53CADC] hover:text-[#53CADC]/80 text-xs font-semibold font-['Inter'] whitespace-nowrap transition-colors"
-            >
-              Continue Session
-            </button>
-            <div className="w-px h-4 bg-white/10" />
-            <button
-              onClick={() => {
-                setShowFloatingBar(false);
-                handleSyncAndDebrief();
-              }}
-              className="text-[#FF4655] hover:text-[#FF4655]/80 text-xs font-semibold font-['Inter'] whitespace-nowrap transition-colors"
-            >
-              End Session
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* Post-session debrief modal */}
       <PostSessionDebrief
