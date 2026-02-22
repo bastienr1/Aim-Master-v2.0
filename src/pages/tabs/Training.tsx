@@ -19,7 +19,7 @@ import { usePreTrainingGate } from '@/hooks/usePreTrainingGate';
 import { PlaylistIntroduction } from '@/components/training/PlaylistIntroduction';
 import { VerifiedBadge } from '@/components/training/VerifiedBadge';
 import { VerifiedShieldIcon } from '@/components/icons/VerifiedShieldIcon';
-import { WelcomeBackCard } from '@/components/post-session/WelcomeBackCard';
+
 
 interface TrainingProps {
   profile: any;
@@ -802,29 +802,6 @@ function ActiveProgramView({
   const [syncing, setSyncing] = useState(false);
   const [viewMode, setViewMode] = useState<'card' | 'list'>('card');
   const [copiedCode, setCopiedCode] = useState(false);
-  const [showWelcomeBack, setShowWelcomeBack] = useState(false);
-  const [endingSession, setEndingSession] = useState(false);
-  const [endSessionFailed, setEndSessionFailed] = useState(false);
-
-  // Detect when user returns to the app while session is active
-  // Uses window.focus (not visibilitychange) because Steam Deep Link opens
-  // a desktop app without hiding the browser tab — visibilitychange never fires.
-  // Focus DOES fire when alt-tabbing back from KovaaK's to the browser.
-  useEffect(() => {
-    if (!sessionActive) {
-      setShowWelcomeBack(false);
-      return;
-    }
-
-    const handleFocus = () => {
-      if (sessionActive) {
-        setShowWelcomeBack(true);
-      }
-    };
-
-    window.addEventListener('focus', handleFocus);
-    return () => window.removeEventListener('focus', handleFocus);
-  }, [sessionActive]);
 
   const scenarios: any[] = Array.isArray(program.scenarios_data) ? program.scenarios_data.filter(Boolean) : [];
   const completionMap = new Map(completions.map((c) => [c.scenario_name, c]));
@@ -986,47 +963,6 @@ function ActiveProgramView({
           </div>
 
           <div className="flex items-center gap-3 shrink-0">
-            {sessionActive && (
-              <button
-                onClick={async () => {
-                  if (endingSession || !onSyncAndDebrief) return;
-                  setEndingSession(true);
-                  setEndSessionFailed(false);
-                  try {
-                    const found = await onSyncAndDebrief();
-                    if (!found) {
-                      setEndSessionFailed(true);
-                      setTimeout(() => setEndSessionFailed(false), 4000);
-                    }
-                  } catch {
-                    setEndSessionFailed(true);
-                    setTimeout(() => setEndSessionFailed(false), 4000);
-                  } finally {
-                    setEndingSession(false);
-                  }
-                }}
-                disabled={endingSession}
-                className={`${endSessionFailed ? 'bg-[#FFCA3A]' : 'bg-[#53CADC]'} hover:opacity-90 disabled:opacity-60 disabled:cursor-not-allowed text-white rounded-lg px-4 py-2 text-sm font-semibold font-['Inter'] flex items-center gap-2 transition-all`}
-                title={endSessionFailed ? "No new scores found — try again or sync from KovaaK's first" : 'Sync scores and open debrief'}
-              >
-                {endingSession ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    Syncing...
-                  </>
-                ) : endSessionFailed ? (
-                  <>
-                    <AlertCircle className="w-4 h-4" />
-                    No scores found
-                  </>
-                ) : (
-                  <>
-                    <CheckCircle className="w-4 h-4" />
-                    End Session
-                  </>
-                )}
-              </button>
-            )}
             <div className="flex items-center bg-[#1C2B36] border border-white/10 rounded-lg p-0.5">
               <button
                 onClick={() => setViewMode('card')}
@@ -1095,66 +1031,53 @@ function ActiveProgramView({
         </div>
       </div>
 
-      {/* Steam Deep Link / Welcome Back — Session Lifecycle */}
+      {/* Steam Deep Link — always visible */}
       {program.playlist_code && (
-        showWelcomeBack && onSyncAndDebrief ? (
-          <WelcomeBackCard
-            onSyncAndDebrief={async () => {
-              const found = await onSyncAndDebrief();
-              if (!found) {
-                setShowWelcomeBack(false);
-              }
-              return found;
-            }}
-            onNotDoneYet={() => setShowWelcomeBack(false)}
-          />
-        ) : (
-          <div className="mt-4 bg-gradient-to-r from-[#1C2B36] to-[#1C2B36] border border-[#FF4655]/20 rounded-xl p-5">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div className="flex-1 min-w-0">
-                <h3 className="font-['Rajdhani'] text-base font-semibold text-[#ECE8E1] mb-1">
-                  Ready to train?
-                </h3>
-                <p className="text-[#9CA8B3] text-xs font-['Inter']">
-                  Click launch to open KovaaK's and jump straight into the playlist. No manual import needed.
-                </p>
-                <button
-                  onClick={() => {
-                    navigator.clipboard.writeText(program.playlist_code!);
-                    setCopiedCode(true);
-                    setTimeout(() => setCopiedCode(false), 2000);
-                  }}
-                  className="mt-2 inline-flex items-center gap-1.5 text-[#53CADC] hover:text-[#53CADC]/80 text-xs font-['JetBrains_Mono'] transition-colors"
-                >
-                  {copiedCode ? (
-                    <>
-                      <Check className="w-3.5 h-3.5 text-[#3DD598]" />
-                      <span className="text-[#3DD598]">Copied!</span>
-                    </>
-                  ) : (
-                    <>
-                      <Copy className="w-3.5 h-3.5" />
-                      {program.playlist_code}
-                    </>
-                  )}
-                </button>
-              </div>
+        <div className="mt-4 bg-gradient-to-r from-[#1C2B36] to-[#1C2B36] border border-[#FF4655]/20 rounded-xl p-5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex-1 min-w-0">
+              <h3 className="font-['Rajdhani'] text-base font-semibold text-[#ECE8E1] mb-1">
+                Ready to train?
+              </h3>
+              <p className="text-[#9CA8B3] text-xs font-['Inter']">
+                Click launch to open KovaaK's and jump straight into the playlist. No manual import needed.
+              </p>
               <button
                 onClick={() => {
                   navigator.clipboard.writeText(program.playlist_code!);
                   setCopiedCode(true);
                   setTimeout(() => setCopiedCode(false), 2000);
-                  onSessionStart?.();
-                  window.open(`steam://run/824270/?action=jump-to-playlist;sharecode=${program.playlist_code}`, '_self');
                 }}
-                className="bg-[#FF4655] hover:bg-[#FF4655]/90 text-white rounded-xl px-6 py-3 text-sm font-semibold font-['Inter'] flex items-center gap-2 transition-all shadow-lg shadow-[#FF4655]/20 shrink-0"
+                className="mt-2 inline-flex items-center gap-1.5 text-[#53CADC] hover:text-[#53CADC]/80 text-xs font-['JetBrains_Mono'] transition-colors"
               >
-                <ExternalLink className="w-4 h-4" />
-                Launch KovaaK's
+                {copiedCode ? (
+                  <>
+                    <Check className="w-3.5 h-3.5 text-[#3DD598]" />
+                    <span className="text-[#3DD598]">Copied!</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-3.5 h-3.5" />
+                    {program.playlist_code}
+                  </>
+                )}
               </button>
             </div>
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText(program.playlist_code!);
+                setCopiedCode(true);
+                setTimeout(() => setCopiedCode(false), 2000);
+                onSessionStart?.();
+                window.open(`steam://run/824270/?action=jump-to-playlist;sharecode=${program.playlist_code}`, '_self');
+              }}
+              className="bg-[#FF4655] hover:bg-[#FF4655]/90 text-white rounded-xl px-6 py-3 text-sm font-semibold font-['Inter'] flex items-center gap-2 transition-all shadow-lg shadow-[#FF4655]/20 shrink-0"
+            >
+              <ExternalLink className="w-4 h-4" />
+              Launch KovaaK's
+            </button>
           </div>
-        )
+        </div>
       )}
 
       {/* Playlist Introduction — shown above scenarios when auto-loaded */}

@@ -19,6 +19,7 @@ import { useCheckinStreak } from '@/hooks/useCheckinStreak';
 import { CheckinButton } from '@/components/dashboard/CheckinButton';
 import { CheckinStreakCard } from '@/components/dashboard/CheckinStreakCard';
 import { PostSessionDebrief } from '@/components/post-session/PostSessionDebrief';
+import { WelcomeBackModal } from '@/components/post-session/WelcomeBackModal';
 import { usePostSessionGate } from '@/hooks/usePostSessionGate';
 import { useSessionDetection } from '@/hooks/useSessionDetection';
 
@@ -51,41 +52,54 @@ export default function Dashboard() {
 
   // Post-session debrief gate and session detection
   const { showDebrief, triggerDebrief, dismissDebrief, completeDebrief } = usePostSessionGate();
-  const { sessionData, detectSession, clearSession } = useSessionDetection();
+  const { sessionData, detectSession, clearSession, resetDetection } = useSessionDetection();
 
   // ─── Session lifecycle state ───
   const [sessionActive, setSessionActive] = useState(false);
+  const [showWelcomeBack, setShowWelcomeBack] = useState(false);
 
   const handleSessionStart = useCallback(() => {
     setSessionActive(true);
-  }, []);
+    setShowWelcomeBack(true); // Show modal immediately on Launch click
+    resetDetection(); // Clear stale lastDetectionRef so new scores are detected
+  }, [resetDetection]);
 
   const handleSessionEnd = useCallback(() => {
     setSessionActive(false);
+    setShowWelcomeBack(false);
   }, []);
 
   // CHANGE 1 — Pending intent state
   const [pendingIntent, setPendingIntent] = useState<{ intent: string; autoLoaded: boolean } | null>(null);
 
-  // ─── Sync & Debrief handler (called by WelcomeBackCard and End Session button) ───
+  // ─── Sync & Debrief handler (called by WelcomeBackModal) ───
   const handleSyncAndDebrief = useCallback(async (): Promise<boolean> => {
+    console.log('[handleSyncAndDebrief] Starting...');
     const session = await detectSession();
+    console.log('[handleSyncAndDebrief] detectSession result:', session ? 'SESSION FOUND' : 'NULL');
     if (session) {
       const triggered = await triggerDebrief();
+      console.log('[handleSyncAndDebrief] triggerDebrief result:', triggered);
       if (triggered) {
+        setShowWelcomeBack(false);
         handleSessionEnd();
         return true;
       }
     }
-    handleSessionEnd();
+    // Don't end session on failure — user can retry from the modal
+    console.log('[handleSyncAndDebrief] Failed to open debrief — session stays active for retry');
     return false;
   }, [detectSession, triggerDebrief, handleSessionEnd]);
 
-  // Fallback: auto-trigger debrief when player returns and no explicit session is active
-  // This preserves the original behavior for users who don't use the Launch button
+  // Focus listener: re-show Welcome Back modal on return, or fallback auto-detect
   useEffect(() => {
     const handleFocus = async () => {
-      if (sessionActive) return; // Session lifecycle handles this via WelcomeBackCard
+      if (sessionActive) {
+        // Explicit session active → re-show modal (no API calls, instant)
+        setShowWelcomeBack(true);
+        return;
+      }
+      // No explicit session → try auto-detect debrief (original behavior)
       const session = await detectSession();
       if (session) {
         await triggerDebrief();
@@ -148,6 +162,14 @@ export default function Dashboard() {
         onComplete={completeCheckin}
         onIntentComplete={handleIntentComplete}
         onSwitchToTraining={handleSwitchToTraining}
+      />
+
+      {/* Welcome Back modal — session active confirmation + debrief trigger */}
+      <WelcomeBackModal
+        isOpen={showWelcomeBack && sessionActive && !showDebrief}
+        onSyncAndDebrief={handleSyncAndDebrief}
+        onNotDoneYet={() => setShowWelcomeBack(false)}
+        onDismiss={() => setShowWelcomeBack(false)}
       />
 
       {/* Post-session debrief modal */}

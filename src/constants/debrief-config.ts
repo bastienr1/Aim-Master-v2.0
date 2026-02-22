@@ -144,7 +144,7 @@ export const DEBRIEF_MOTIVATIONAL_TIPS: string[] = [
 
 // ─── Cooldown ───
 
-export const DEBRIEF_COOLDOWN_MS = 2 * 60 * 60 * 1000; // 2 hours
+export const DEBRIEF_COOLDOWN_MS = 0; // TODO: restore to 2 * 60 * 60 * 1000 for production
 export const SESSION_GAP_THRESHOLD_MS = 10 * 60 * 1000; // 10 min gap = new session
 export const SHORT_SESSION_THRESHOLD_S = 600; // < 10 min = short session
 export const SCORE_DECLINE_THRESHOLD = 0.15; // 15% decline triggers contextual chip

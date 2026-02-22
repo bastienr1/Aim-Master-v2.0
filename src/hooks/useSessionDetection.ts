@@ -20,6 +20,7 @@ interface UseSessionDetectionReturn {
   detecting: boolean;
   detectSession: () => Promise<GroupedSession | null>;
   clearSession: () => void;
+  resetDetection: () => void;
 }
 
 export function useSessionDetection(): UseSessionDetectionReturn {
@@ -29,7 +30,8 @@ export function useSessionDetection(): UseSessionDetectionReturn {
   const lastDetectionRef = useRef<string | null>(null);
 
   const detectSession = useCallback(async (): Promise<GroupedSession | null> => {
-    if (!user) return null;
+    if (!user) { console.log('[detectSession] No user — aborting'); return null; }
+    console.log('[detectSession] Starting detection...');
     setDetecting(true);
 
     try {
@@ -41,9 +43,11 @@ export function useSessionDetection(): UseSessionDetectionReturn {
         .maybeSingle();
 
       if (!profile?.username) {
+        console.log('[detectSession] No kovaaks username found — aborting');
         setDetecting(false);
         return null;
       }
+      console.log('[detectSession] Username:', profile.username);
 
       // 2. Call the kovaaks-sync edge function to fetch recent activity
       const { data, error } = await supabase.functions.invoke('kovaaks-sync', {
@@ -51,10 +55,11 @@ export function useSessionDetection(): UseSessionDetectionReturn {
       });
 
       if (error || !data?.success) {
-        console.error('Session detection sync failed:', error || data);
+        console.error('[detectSession] Sync failed:', error || data);
         setDetecting(false);
         return null;
       }
+      console.log('[detectSession] Sync succeeded');
 
       // 3. Get recent scores from score_history (written by full_sync)
       const threeHoursAgo = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString();
@@ -71,18 +76,22 @@ export function useSessionDetection(): UseSessionDetectionReturn {
         .order('session_date', { ascending: true });
 
       if (scoresError || !recentScores || recentScores.length === 0) {
+        console.log('[detectSession] No recent scores in last 3 hours. Error:', scoresError);
         setDetecting(false);
         return null;
       }
+      console.log('[detectSession] Found', recentScores.length, 'recent scores');
 
       const typedScores = recentScores as unknown as ScoreRow[];
 
       // 4. Check if we already debriefed these scores
       const latestScoreDate = typedScores[typedScores.length - 1].session_date;
       if (lastDetectionRef.current === latestScoreDate) {
+        console.log('[detectSession] BLOCKED: lastDetectionRef matches latest score date:', latestScoreDate);
         setDetecting(false);
         return null;
       }
+      console.log('[detectSession] New scores detected, latest:', latestScoreDate);
 
       // Check against existing debriefs
       const { data: existingDebrief } = await supabase
@@ -93,9 +102,11 @@ export function useSessionDetection(): UseSessionDetectionReturn {
         .limit(1);
 
       if (existingDebrief && existingDebrief.length > 0) {
+        console.log('[detectSession] BLOCKED: existing debrief found within 3 hours');
         setDetecting(false);
         return null;
       }
+      console.log('[detectSession] No existing debrief blocking — building session data');
 
       // 5. Group scores into plays
       const plays: SessionPlay[] = typedScores.map((s) => ({
@@ -203,5 +214,10 @@ export function useSessionDetection(): UseSessionDetectionReturn {
     setSessionData(null);
   }, []);
 
-  return { sessionData, detecting, detectSession, clearSession };
+  const resetDetection = useCallback(() => {
+    lastDetectionRef.current = null;
+    console.log('[detectSession] Detection reset — stale guard cleared');
+  }, []);
+
+  return { sessionData, detecting, detectSession, clearSession, resetDetection };
 }
