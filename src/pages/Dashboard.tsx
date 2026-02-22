@@ -22,6 +22,7 @@ import { PostSessionDebrief } from '@/components/post-session/PostSessionDebrief
 import { WelcomeBackModal } from '@/components/post-session/WelcomeBackModal';
 import { usePostSessionGate } from '@/hooks/usePostSessionGate';
 import { useSessionDetection } from '@/hooks/useSessionDetection';
+import type { GroupedSession } from '@/types/debrief';
 
 type Tab = 'home' | 'training' | 'mental' | 'stats' | 'coach' | 'goals' | 'sessions' | 'profile';
 
@@ -51,52 +52,88 @@ export default function Dashboard() {
   const streak = useCheckinStreak();
 
   // Post-session debrief gate and session detection
-  const { showDebrief, triggerDebrief, dismissDebrief, completeDebrief } = usePostSessionGate();
-  const { sessionData, detectSession, clearSession, resetDetection } = useSessionDetection();
+  const { showDebrief, triggerDebrief, dismissDebrief, completeDebrief, forceShowDebrief } = usePostSessionGate();
+  const { sessionData, detectSession, clearSession, resetDetection, setEmptySessionData } = useSessionDetection();
 
   // ─── Session lifecycle state ───
   const [sessionActive, setSessionActive] = useState(false);
   const [showWelcomeBack, setShowWelcomeBack] = useState(false);
+  const [showFloatingBar, setShowFloatingBar] = useState(false);
 
   const handleSessionStart = useCallback(() => {
     setSessionActive(true);
-    setShowWelcomeBack(true); // Show modal immediately on Launch click
-    resetDetection(); // Clear stale lastDetectionRef so new scores are detected
+    setShowWelcomeBack(true);
+    setShowFloatingBar(false);
+    resetDetection();
   }, [resetDetection]);
 
   const handleSessionEnd = useCallback(() => {
     setSessionActive(false);
     setShowWelcomeBack(false);
+    setShowFloatingBar(false);
   }, []);
 
   // CHANGE 1 — Pending intent state
   const [pendingIntent, setPendingIntent] = useState<{ intent: string; autoLoaded: boolean } | null>(null);
 
-  // ─── Sync & Debrief handler (called by WelcomeBackModal) ───
+  // ─── Sync & Debrief handler (called by WelcomeBackModal + floating End Session) ───
+  // Sync is bonus context, not a gate. Debrief ALWAYS opens.
   const handleSyncAndDebrief = useCallback(async (): Promise<boolean> => {
     console.log('[handleSyncAndDebrief] Starting...');
-    const session = await detectSession();
-    console.log('[handleSyncAndDebrief] detectSession result:', session ? 'SESSION FOUND' : 'NULL');
-    if (session) {
-      const triggered = await triggerDebrief();
-      console.log('[handleSyncAndDebrief] triggerDebrief result:', triggered);
-      if (triggered) {
-        setShowWelcomeBack(false);
-        handleSessionEnd();
-        return true;
-      }
+
+    // Try to detect session data (sync + score lookup) — but don't gate on it
+    let session: Awaited<ReturnType<typeof detectSession>> = null;
+    try {
+      session = await detectSession();
+      console.log('[handleSyncAndDebrief] detectSession result:', session ? 'SESSION FOUND' : 'NULL (proceeding anyway)');
+    } catch (err) {
+      console.error('[handleSyncAndDebrief] detectSession error (proceeding anyway):', err);
     }
-    // Don't end session on failure — user can retry from the modal
-    console.log('[handleSyncAndDebrief] Failed to open debrief — session stays active for retry');
-    return false;
-  }, [detectSession, triggerDebrief, handleSessionEnd]);
+
+    // If no session data, create a minimal empty session so debrief can still open
+    if (!session) {
+      const now = new Date().toISOString();
+      const emptySession: GroupedSession = {
+        sessionStart: now,
+        sessionEnd: now,
+        durationSeconds: 0,
+        plays: [],
+        scenarioCount: 0,
+        categories: {},
+        prsDetected: [],
+        scoreTrajectory: [],
+        scoresDeclined: false,
+        hasNewScenario: false,
+      };
+      setEmptySessionData(emptySession);
+    }
+
+    // Always open debrief — triggerDebrief checks cooldown, force-bypass it
+    setShowWelcomeBack(false);
+    const triggered = await triggerDebrief();
+    console.log('[handleSyncAndDebrief] triggerDebrief result:', triggered);
+
+    if (triggered) {
+      handleSessionEnd();
+      return true;
+    }
+
+    // If triggerDebrief returned false (cooldown), force it open anyway during testing
+    console.log('[handleSyncAndDebrief] Cooldown blocked — force-opening debrief');
+    forceShowDebrief();
+    handleSessionEnd();
+    return true;
+  }, [detectSession, triggerDebrief, handleSessionEnd, setEmptySessionData, forceShowDebrief]);
 
   // Focus listener: re-show Welcome Back modal on return, or fallback auto-detect
   useEffect(() => {
     const handleFocus = async () => {
       if (sessionActive) {
-        // Explicit session active → re-show modal (no API calls, instant)
-        setShowWelcomeBack(true);
+        // If floating bar is showing, user chose "Not done yet" — respect that choice
+        // Only re-show modal if neither modal nor floating bar is visible
+        if (!showFloatingBar) {
+          setShowWelcomeBack(true);
+        }
         return;
       }
       // No explicit session → try auto-detect debrief (original behavior)
@@ -108,7 +145,7 @@ export default function Dashboard() {
 
     window.addEventListener('focus', handleFocus);
     return () => window.removeEventListener('focus', handleFocus);
-  }, [sessionActive, detectSession, triggerDebrief]);
+  }, [sessionActive, showFloatingBar, detectSession, triggerDebrief]);
 
   // CHANGE 2 — Intent handlers
   const handleIntentComplete = useCallback((intent: string) => {
@@ -168,9 +205,51 @@ export default function Dashboard() {
       <WelcomeBackModal
         isOpen={showWelcomeBack && sessionActive && !showDebrief}
         onSyncAndDebrief={handleSyncAndDebrief}
-        onNotDoneYet={() => setShowWelcomeBack(false)}
-        onDismiss={() => setShowWelcomeBack(false)}
+        onNotDoneYet={() => {
+          setShowWelcomeBack(false);
+          setShowFloatingBar(true);
+        }}
+        onDismiss={() => {
+          setShowWelcomeBack(false);
+          setShowFloatingBar(true);
+        }}
       />
+
+      {/* Floating session control bar — shown when modal is dismissed */}
+      {showFloatingBar && sessionActive && !showDebrief && !showWelcomeBack && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 animate-slide-up">
+          <div className="flex items-center gap-2 bg-[#1C2B36] border border-[#53CADC]/30 rounded-2xl px-4 py-2.5 shadow-2xl shadow-black/40 backdrop-blur-sm">
+            {/* Pulse dot */}
+            <div className="relative flex items-center justify-center w-2.5 h-2.5 shrink-0">
+              <div className="absolute w-2.5 h-2.5 rounded-full bg-[#53CADC] animate-ping opacity-40" />
+              <div className="w-2 h-2 rounded-full bg-[#53CADC]" />
+            </div>
+            <span className="text-[#9CA8B3] text-xs font-['Inter'] font-medium whitespace-nowrap">
+              Session active
+            </span>
+            <div className="w-px h-4 bg-white/10 mx-1" />
+            <button
+              onClick={() => {
+                setShowFloatingBar(false);
+                setShowWelcomeBack(true);
+              }}
+              className="text-[#53CADC] hover:text-[#53CADC]/80 text-xs font-semibold font-['Inter'] whitespace-nowrap transition-colors"
+            >
+              Continue Session
+            </button>
+            <div className="w-px h-4 bg-white/10" />
+            <button
+              onClick={() => {
+                setShowFloatingBar(false);
+                handleSyncAndDebrief();
+              }}
+              className="text-[#FF4655] hover:text-[#FF4655]/80 text-xs font-semibold font-['Inter'] whitespace-nowrap transition-colors"
+            >
+              End Session
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Post-session debrief modal */}
       <PostSessionDebrief

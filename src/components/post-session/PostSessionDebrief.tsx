@@ -28,6 +28,21 @@ export function PostSessionDebrief({
 }: PostSessionDebriefProps) {
   const { saveDebrief, getDebriefCount } = useDebriefData();
 
+  // Fallback empty session for when debrief opens without score data
+  const emptySession: GroupedSession = {
+    sessionStart: new Date().toISOString(),
+    sessionEnd: new Date().toISOString(),
+    durationSeconds: 0,
+    plays: [],
+    scenarioCount: 0,
+    categories: {},
+    prsDetected: [],
+    scoreTrajectory: [],
+    scoresDeclined: false,
+    hasNewScenario: false,
+  };
+  const session = sessionData ?? emptySession;
+
   // Modal visibility state
   const [visible, setVisible] = useState(false);
   const [overlayVisible, setOverlayVisible] = useState(false);
@@ -50,7 +65,7 @@ export function PostSessionDebrief({
 
   // Entrance animation + load debrief count
   useEffect(() => {
-    if (isOpen && sessionData) {
+    if (isOpen) {
       // Reset state
       setScreen('summary');
       setScreenTransition(false);
@@ -73,7 +88,7 @@ export function PostSessionDebrief({
       setVisible(false);
       setOverlayVisible(false);
     }
-  }, [isOpen, sessionData, getDebriefCount]);
+  }, [isOpen, getDebriefCount]);
 
   const exitModal = useCallback(
     (callback: () => void) => {
@@ -117,13 +132,13 @@ export function PostSessionDebrief({
 
   const handleRatingComplete = useCallback(
     async (quality: number) => {
-      if (!sessionData || submitting) return;
+      if (submitting) return;
       setSubmitting(true);
 
       debriefRef.current.sessionQuality = quality;
 
       try {
-        await saveDebrief(sessionData, debriefRef.current);
+        await saveDebrief(session, debriefRef.current);
       } catch (err) {
         console.error('Failed to save debrief:', err);
       }
@@ -131,15 +146,14 @@ export function PostSessionDebrief({
       setSubmitting(false);
       exitModal(onComplete);
     },
-    [sessionData, submitting, saveDebrief, exitModal, onComplete]
+    [session, submitting, saveDebrief, exitModal, onComplete]
   );
 
   const handleDismiss = useCallback(() => {
     exitModal(onClose);
   }, [exitModal, onClose]);
 
-  // Don't render if no session data or not open
-  if (!sessionData) return null;
+  // Don't render if not open (allow empty session data — user may debrief without scores)
   if (!isOpen && !overlayVisible) return null;
 
   return (
@@ -208,13 +222,13 @@ export function PostSessionDebrief({
               >
                 {screen === 'summary' && (
                   <SessionSummaryScreen
-                    session={sessionData}
+                    session={session}
                     onNext={handleSummaryNext}
                   />
                 )}
                 {screen === 'analysis' && (
                   <SolutionAnalysisScreen
-                    session={sessionData}
+                    session={session}
                     onNext={handleAnalysisNext}
                   />
                 )}

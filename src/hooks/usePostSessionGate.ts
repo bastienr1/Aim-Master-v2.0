@@ -8,6 +8,7 @@ interface UsePostSessionGateReturn {
   triggerDebrief: () => Promise<boolean>;
   dismissDebrief: () => void;
   completeDebrief: () => void;
+  forceShowDebrief: () => void;
 }
 
 export function usePostSessionGate(): UsePostSessionGateReturn {
@@ -59,5 +60,12 @@ export function usePostSessionGate(): UsePostSessionGateReturn {
     setShowDebrief(false);
   }, []);
 
-  return { showDebrief, triggerDebrief, dismissDebrief, completeDebrief };
+  // Force-open debrief bypassing all cooldown checks
+  // Used when user explicitly clicks "Sync & Debrief" or "End Session"
+  const forceShowDebrief = useCallback(() => {
+    console.log('[usePostSessionGate] Force-opening debrief (bypass cooldown)');
+    setShowDebrief(true);
+  }, []);
+
+  return { showDebrief, triggerDebrief, dismissDebrief, completeDebrief, forceShowDebrief };
 }

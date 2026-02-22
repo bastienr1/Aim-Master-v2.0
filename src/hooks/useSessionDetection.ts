@@ -21,6 +21,7 @@ interface UseSessionDetectionReturn {
   detectSession: () => Promise<GroupedSession | null>;
   clearSession: () => void;
   resetDetection: () => void;
+  setEmptySessionData: (session: GroupedSession) => void;
 }
 
 export function useSessionDetection(): UseSessionDetectionReturn {
@@ -219,5 +220,11 @@ export function useSessionDetection(): UseSessionDetectionReturn {
     console.log('[detectSession] Detection reset — stale guard cleared');
   }, []);
 
-  return { sessionData, detecting, detectSession, clearSession, resetDetection };
+  // Set a minimal empty session so debrief can open even with zero scores
+  const setEmptySessionData = useCallback((session: GroupedSession) => {
+    console.log('[detectSession] Setting empty session data for score-less debrief');
+    setSessionData(session);
+  }, []);
+
+  return { sessionData, detecting, detectSession, clearSession, resetDetection, setEmptySessionData };
 }

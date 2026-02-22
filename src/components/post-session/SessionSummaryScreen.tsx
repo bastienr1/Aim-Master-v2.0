@@ -11,21 +11,34 @@ export function SessionSummaryScreen({ session, onNext }: SessionSummaryScreenPr
 
   return (
     <div className="space-y-5">
+      {session.plays.length === 0 && (
+        <div className="mb-6 bg-[#1C2B36] border border-white/10 rounded-xl p-4 text-center">
+          <p className="text-[#9CA8B3] text-sm font-['Inter']">
+            No scores recorded this session
+          </p>
+          <p className="text-[#5A6872] text-xs font-['Inter'] mt-1">
+            That's okay — reflection is valuable regardless of recorded data.
+          </p>
+        </div>
+      )}
+
       {/* Stats row */}
-      <div className="flex items-center gap-4">
-        <div className="flex items-center gap-1.5 bg-white/5 rounded-lg px-3 py-2">
-          <span className="text-sm">{'\u{23F1}\u{FE0F}'}</span>
-          <span className="font-['JetBrains_Mono'] text-sm text-[#ECE8E1]">
-            {durationMin} min
-          </span>
+      {session.plays.length > 0 && (
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-1.5 bg-white/5 rounded-lg px-3 py-2">
+            <span className="text-sm">{'\u{23F1}\u{FE0F}'}</span>
+            <span className="font-['JetBrains_Mono'] text-sm text-[#ECE8E1]">
+              {durationMin} min
+            </span>
+          </div>
+          <div className="flex items-center gap-1.5 bg-white/5 rounded-lg px-3 py-2">
+            <span className="text-sm">{'\u{1F3AF}'}</span>
+            <span className="font-['JetBrains_Mono'] text-sm text-[#ECE8E1]">
+              {session.scenarioCount} scenario{session.scenarioCount !== 1 ? 's' : ''}
+            </span>
+          </div>
         </div>
-        <div className="flex items-center gap-1.5 bg-white/5 rounded-lg px-3 py-2">
-          <span className="text-sm">{'\u{1F3AF}'}</span>
-          <span className="font-['JetBrains_Mono'] text-sm text-[#ECE8E1]">
-            {session.scenarioCount} scenario{session.scenarioCount !== 1 ? 's' : ''}
-          </span>
-        </div>
-      </div>
+      )}
 
       {/* Category breakdown */}
       {Object.keys(session.categories).length > 0 && (
