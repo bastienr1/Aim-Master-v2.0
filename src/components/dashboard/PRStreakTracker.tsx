@@ -43,11 +43,17 @@ export function PRStreakTracker({ prData }: PRStreakTrackerProps) {
   }
 
   // ─── State 1: Has PRs (celebration mode) ───
-  const latestPR = prData.prs[0];
-  const isToday = latestPR
-    ? new Date(latestPR.achievedAt).toISOString().split('T')[0] ===
-      new Date().toISOString().split('T')[0]
-    : false;
+  const hasRecentPR = prData.prs.some(
+    pr => new Date(pr.achievedAt).toISOString().split('T')[0] ===
+          new Date().toISOString().split('T')[0]
+  );
+
+  // Top 4 by improvement %, keeping first-plays at the end
+  const topPRs = useMemo(() => {
+    return [...prData.prs]
+      .sort((a, b) => b.improvement - a.improvement)
+      .slice(0, 4);
+  }, [prData.prs]);
 
   return (
     <>
@@ -59,7 +65,7 @@ export function PRStreakTracker({ prData }: PRStreakTrackerProps) {
       `}</style>
       <div
         className="bg-[#2A3A47] border border-[#3DD598]/20 rounded-xl p-4"
-        style={isToday ? { animation: 'prGlow 2s ease-in-out 3' } : undefined}
+        style={hasRecentPR ? { animation: 'prGlow 2s ease-in-out 3' } : undefined}
       >
         {/* Header row */}
         <div className="flex items-center justify-between mb-3">
@@ -79,45 +85,47 @@ export function PRStreakTracker({ prData }: PRStreakTrackerProps) {
           )}
         </div>
 
-        {/* Latest PR card */}
-        {latestPR && (
-          <div
-            className="rounded-lg p-3 mb-3"
-            style={{
-              borderLeft: '2px solid #3DD598',
-              backgroundColor: 'rgba(61, 213, 152, 0.05)',
-            }}
-          >
-            <div className="flex items-center justify-between">
-              <span className="font-['Inter'] text-sm text-[#ECE8E1]">
-                {latestPR.isFirstPlay ? '\u{1F195} ' : '\u{1F3AF} '}
-                {latestPR.scenarioName}
-              </span>
-              {!latestPR.isFirstPlay && (
-                <span className="font-['JetBrains_Mono'] text-xs text-[#3DD598]">
-                  +{latestPR.improvement.toFixed(1)}%
+        {/* 2x2 PR grid */}
+        <div className="grid grid-cols-2 gap-2 mb-3">
+          {topPRs.map((pr, i) => (
+            <div
+              key={`${pr.scenarioName}-${i}`}
+              className="rounded-lg px-2.5 py-2"
+              style={{
+                borderLeft: '2px solid #3DD598',
+                backgroundColor: 'rgba(61, 213, 152, 0.05)',
+              }}
+            >
+              <div className="flex items-center justify-between gap-1">
+                <span className="font-['Inter'] text-xs text-[#ECE8E1] truncate min-w-0">
+                  {pr.scenarioName}
                 </span>
-              )}
-            </div>
-            <div className="flex items-center gap-2 mt-1">
-              {latestPR.isFirstPlay ? (
-                <span className="font-['Inter'] text-xs text-[#3DD598]">
-                  First score!
-                </span>
-              ) : (
-                <>
-                  <span className="font-['JetBrains_Mono'] text-xs text-[#5A6872]">
-                    {Math.round(latestPR.previousBest).toLocaleString()}
+                {!pr.isFirstPlay && (
+                  <span className="font-['JetBrains_Mono'] text-[11px] text-[#3DD598] shrink-0">
+                    +{pr.improvement.toFixed(1)}%
                   </span>
-                  <span className="text-[#5A6872] text-xs">{'\u{2192}'}</span>
-                  <span className="font-['JetBrains_Mono'] text-xs text-[#3DD598] font-semibold">
-                    {Math.round(latestPR.newScore).toLocaleString()}
+                )}
+              </div>
+              <div className="flex items-center gap-1.5 mt-0.5">
+                {pr.isFirstPlay ? (
+                  <span className="font-['Inter'] text-[11px] text-[#3DD598]">
+                    First score!
                   </span>
-                </>
-              )}
+                ) : (
+                  <>
+                    <span className="font-['JetBrains_Mono'] text-[11px] text-[#5A6872]">
+                      {Math.round(pr.previousBest).toLocaleString()}
+                    </span>
+                    <span className="text-[#5A6872] text-[11px]">{'\u{2192}'}</span>
+                    <span className="font-['JetBrains_Mono'] text-[11px] text-[#3DD598] font-semibold">
+                      {Math.round(pr.newScore).toLocaleString()}
+                    </span>
+                  </>
+                )}
+              </div>
             </div>
-          </div>
-        )}
+          ))}
+        </div>
 
         {/* 7-day dot visualization */}
         <PRDots prDaysInWindow={prData.prDaysInWindow} />

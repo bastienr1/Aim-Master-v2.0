@@ -16,10 +16,8 @@ import { MentalGame } from './MentalGame';
 import { PreTrainingCheckin } from '@/components/mental-game/PreTrainingCheckin';
 import { usePreTrainingGate } from '@/hooks/usePreTrainingGate';
 import { useCheckinStreak } from '@/hooks/useCheckinStreak';
-import { usePRDetection } from '@/hooks/usePRDetection';
 import { CheckinButton } from '@/components/dashboard/CheckinButton';
 import { CheckinStreakCard } from '@/components/dashboard/CheckinStreakCard';
-import { PRStreakTracker } from '@/components/dashboard/PRStreakTracker';
 import { PostSessionDebrief } from '@/components/post-session/PostSessionDebrief';
 import { WelcomeBackModal } from '@/components/post-session/WelcomeBackModal';
 import { usePostSessionGate } from '@/hooks/usePostSessionGate';
@@ -52,7 +50,6 @@ export default function Dashboard() {
 
   // Streak data for the dashboard
   const streak = useCheckinStreak();
-  const prData = usePRDetection();
 
   // Post-session debrief gate and session detection
   const { showDebrief, triggerDebrief, dismissDebrief, completeDebrief, forceShowDebrief } = usePostSessionGate();
@@ -333,10 +330,9 @@ export default function Dashboard() {
       <main className="flex-1 overflow-y-auto pt-[57px] lg:pt-0">
         <div style={{ display: activeTab === 'home' ? 'block' : 'none' }}>
           <Home profile={profile} onNavigate={handleNavigate} onRefresh={loadProfile} onTriggerCheckin={triggerCheckin} />
-          {/* Streak cards injected below Home content */}
-          <div className="px-6 lg:px-8 -mt-4 mb-6 space-y-3">
+          {/* Streak card injected at the top of the home tab content area */}
+          <div className="px-6 lg:px-8 -mt-4 mb-6">
             <CheckinStreakCard streak={streak} />
-            <PRStreakTracker prData={prData} />
           </div>
         </div>
         {/* CHANGE 3 — Pass pendingIntent and onClearIntent to Training */}

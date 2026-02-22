@@ -17,6 +17,8 @@ import { ProfileOnboarding } from '@/components/onboarding/ProfileOnboarding';
 import { SkillRadar } from '@/components/dashboard/SkillRadar';
 import { MissionBriefing } from '@/components/dashboard/MissionBriefing';
 import { MentalGameBar } from '@/components/dashboard/MentalGameBar';
+import { PRStreakTracker } from '@/components/dashboard/PRStreakTracker';
+import { usePRDetection } from '@/hooks/usePRDetection';
 
 interface HomeProps {
   profile: any;
@@ -46,6 +48,7 @@ function SectionError({ onRetry, label }: { onRetry: () => void; label: string }
 
 export function Home({ profile, onNavigate, onRefresh, onTriggerCheckin }: HomeProps) {
   const { user } = useAuth();
+  const prData = usePRDetection();
 
   // Profile completeness check — wait for profile to load before deciding
   const isProfileLoaded = profile !== null && profile !== undefined;
@@ -657,6 +660,11 @@ export function Home({ profile, onNavigate, onRefresh, onTriggerCheckin }: HomeP
           </div>
         </div>
       )}
+
+      {/* PR Streak Tracker */}
+      <div className="mb-6">
+        <PRStreakTracker prData={prData} />
+      </div>
 
       {/* Section 2: Quick Stats */}
       {loadingStats ? (
