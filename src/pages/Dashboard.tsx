@@ -81,6 +81,21 @@ export default function Dashboard() {
     return false;
   }, [detectSession, triggerDebrief, handleSessionEnd]);
 
+  // Fallback: auto-trigger debrief when player returns and no explicit session is active
+  // This preserves the original behavior for users who don't use the Launch button
+  useEffect(() => {
+    const handleFocus = async () => {
+      if (sessionActive) return; // Session lifecycle handles this via WelcomeBackCard
+      const session = await detectSession();
+      if (session) {
+        await triggerDebrief();
+      }
+    };
+
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, [sessionActive, detectSession, triggerDebrief]);
+
   // CHANGE 2 — Intent handlers
   const handleIntentComplete = useCallback((intent: string) => {
     setPendingIntent({ intent, autoLoaded: true });

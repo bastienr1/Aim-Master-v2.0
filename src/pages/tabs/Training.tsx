@@ -803,22 +803,27 @@ function ActiveProgramView({
   const [viewMode, setViewMode] = useState<'card' | 'list'>('card');
   const [copiedCode, setCopiedCode] = useState(false);
   const [showWelcomeBack, setShowWelcomeBack] = useState(false);
+  const [endingSession, setEndingSession] = useState(false);
+  const [endSessionFailed, setEndSessionFailed] = useState(false);
 
   // Detect when user returns to the app while session is active
+  // Uses window.focus (not visibilitychange) because Steam Deep Link opens
+  // a desktop app without hiding the browser tab — visibilitychange never fires.
+  // Focus DOES fire when alt-tabbing back from KovaaK's to the browser.
   useEffect(() => {
     if (!sessionActive) {
       setShowWelcomeBack(false);
       return;
     }
 
-    const handleVisibility = () => {
-      if (document.visibilityState === 'visible' && sessionActive) {
+    const handleFocus = () => {
+      if (sessionActive) {
         setShowWelcomeBack(true);
       }
     };
 
-    document.addEventListener('visibilitychange', handleVisibility);
-    return () => document.removeEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
   }, [sessionActive]);
 
   const scenarios: any[] = Array.isArray(program.scenarios_data) ? program.scenarios_data.filter(Boolean) : [];
@@ -984,18 +989,42 @@ function ActiveProgramView({
             {sessionActive && (
               <button
                 onClick={async () => {
-                  if (onSyncAndDebrief) {
+                  if (endingSession || !onSyncAndDebrief) return;
+                  setEndingSession(true);
+                  setEndSessionFailed(false);
+                  try {
                     const found = await onSyncAndDebrief();
                     if (!found) {
-                      onSessionCancel?.();
-                      setShowWelcomeBack(false);
+                      setEndSessionFailed(true);
+                      setTimeout(() => setEndSessionFailed(false), 4000);
                     }
+                  } catch {
+                    setEndSessionFailed(true);
+                    setTimeout(() => setEndSessionFailed(false), 4000);
+                  } finally {
+                    setEndingSession(false);
                   }
                 }}
-                className="bg-[#53CADC] hover:bg-[#53CADC]/90 text-white rounded-lg px-4 py-2 text-sm font-semibold font-['Inter'] flex items-center gap-2 transition-colors"
+                disabled={endingSession}
+                className={`${endSessionFailed ? 'bg-[#FFCA3A]' : 'bg-[#53CADC]'} hover:opacity-90 disabled:opacity-60 disabled:cursor-not-allowed text-white rounded-lg px-4 py-2 text-sm font-semibold font-['Inter'] flex items-center gap-2 transition-all`}
+                title={endSessionFailed ? "No new scores found — try again or sync from KovaaK's first" : 'Sync scores and open debrief'}
               >
-                <CheckCircle className="w-4 h-4" />
-                End Session
+                {endingSession ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Syncing...
+                  </>
+                ) : endSessionFailed ? (
+                  <>
+                    <AlertCircle className="w-4 h-4" />
+                    No scores found
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle className="w-4 h-4" />
+                    End Session
+                  </>
+                )}
               </button>
             )}
             <div className="flex items-center bg-[#1C2B36] border border-white/10 rounded-lg p-0.5">
