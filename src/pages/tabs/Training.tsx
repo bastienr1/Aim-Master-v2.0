@@ -778,10 +778,10 @@ function ActiveProgramView({
   showIntroduction,
   pendingIntent,
   onDismissIntroduction,
-  sessionActive,
+  sessionActive: _sessionActive,
   onSessionStart,
-  onSyncAndDebrief,
-  onSessionCancel,
+  onSyncAndDebrief: _onSyncAndDebrief,
+  onSessionCancel: _onSessionCancel,
 }: {
   program: TrainingProgram;
   completions: ScenarioCompletion[];
