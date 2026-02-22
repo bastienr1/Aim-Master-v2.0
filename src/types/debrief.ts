@@ -39,3 +39,25 @@ export interface DebriefInsight {
   message: string;
   type: 'correlation' | 'pattern' | 'motivational';
 }
+
+// ─── PR Streak Tracker types ───
+
+export interface PersonalRecord {
+  scenarioName: string;
+  newScore: number;
+  previousBest: number;
+  improvement: number;        // percentage gain: ((new - old) / old) * 100
+  category: string | null;
+  achievedAt: string;         // ISO timestamp (from debrief created_at)
+  isFirstPlay: boolean;       // true if no previous best existed
+}
+
+export interface PRStreakData {
+  prs: PersonalRecord[];       // all PRs in window, sorted by achievedAt DESC
+  totalPRs: number;
+  streakDays: number;          // consecutive days with at least 1 PR
+  bestImprovement: PersonalRecord | null;
+  prDaysInWindow: Set<string>; // set of date strings (YYYY-MM-DD) with PRs
+  isLoading: boolean;
+  isEmpty: boolean;            // true if no debriefs exist at all (new user)
+}
