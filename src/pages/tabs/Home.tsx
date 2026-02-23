@@ -17,7 +17,9 @@ import { SkillRadar } from '@/components/dashboard/SkillRadar';
 import { MissionBriefing } from '@/components/dashboard/MissionBriefing';
 import { MentalGameBar } from '@/components/dashboard/MentalGameBar';
 import { PRStreakTracker } from '@/components/dashboard/PRStreakTracker';
+import { BenchmarkRadar } from '@/components/dashboard/BenchmarkRadar';
 import { usePRDetection } from '@/hooks/usePRDetection';
+import { useBenchmarkRadarData, BenchmarkScenarioRow } from '@/hooks/useBenchmarkRadarData';
 
 interface HomeProps {
   profile: any;
@@ -73,6 +75,9 @@ export function Home({ profile, onNavigate, onRefresh, onTriggerCheckin }: HomeP
   const [coachData, setCoachData] = useState<any>(null);
   const [loadingCoach, setLoadingCoach] = useState(true);
   const [errorCoach, setErrorCoach] = useState(false);
+
+  // Benchmark Radar
+  const [benchmarkData, setBenchmarkData] = useState<BenchmarkScenarioRow[] | null>(null);
 
   const [syncing, setSyncing] = useState(false);
 
@@ -264,6 +269,39 @@ export function Home({ profile, onNavigate, onRefresh, onTriggerCheckin }: HomeP
     }
   }, [user]);
 
+  const loadBenchmarkRadar = useCallback(async () => {
+    if (!profile?.id) return;
+
+    try {
+      const { data, error } = await supabase
+        .from('user_scenario_stats')
+        .select(`
+          high_score,
+          current_rank,
+          scenarios!inner(
+            name,
+            category,
+            subcategory,
+            benchmark_system,
+            rank_thresholds
+          )
+        `)
+        .eq('user_id', profile.id)
+        .in('scenarios.benchmark_system', ['voltaic_novice', 'voltaic_intermediate'])
+        .not('scenarios.subcategory', 'is', null)
+        .not('scenarios.rank_thresholds', 'is', null);
+
+      if (error) {
+        console.error('Benchmark radar load error:', error);
+        return;
+      }
+
+      setBenchmarkData(data as unknown as BenchmarkScenarioRow[]);
+    } catch (err) {
+      console.error('Benchmark radar error:', err);
+    }
+  }, [profile?.id]);
+
   const loadAllData = useCallback(async () => {
     setSyncing(true);
     await Promise.all([
@@ -271,9 +309,10 @@ export function Home({ profile, onNavigate, onRefresh, onTriggerCheckin }: HomeP
       loadMomentum(),
       loadCharts(),
       loadCoach(),
+      loadBenchmarkRadar(),
     ]);
     setSyncing(false);
-  }, [loadSyncStatus, loadMomentum, loadCharts, loadCoach]);
+  }, [loadSyncStatus, loadMomentum, loadCharts, loadCoach, loadBenchmarkRadar]);
 
   useEffect(() => {
     if (isProfileComplete) {
@@ -290,6 +329,7 @@ export function Home({ profile, onNavigate, onRefresh, onTriggerCheckin }: HomeP
   };
 
   const coachState = getCoachState();
+  const radarResult = useBenchmarkRadarData(benchmarkData);
 
   const getMomentumConfig = () => {
     if (!momentumData) return { color: '#9CA8B3', icon: Minus, label: 'Loading...' };
@@ -598,6 +638,14 @@ export function Home({ profile, onNavigate, onRefresh, onTriggerCheckin }: HomeP
             <SkeletonBlock className="h-96" />
           ) : errorCharts ? (
             <SectionError onRetry={loadCharts} label="charts" />
+          ) : radarResult.hasData ? (
+            <BenchmarkRadar
+              axes={radarResult.axes}
+              overallRank={radarResult.overallRank}
+              overallPercentile={radarResult.overallPercentile}
+              strongest={radarResult.strongest}
+              weakest={radarResult.weakest}
+            />
           ) : (
             <SkillRadar
               distribution={chartData?.distribution}
