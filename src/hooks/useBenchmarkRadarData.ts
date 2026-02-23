@@ -255,9 +255,11 @@ export function useBenchmarkRadarData(
       ? withData.reduce((a, b) => a.percentile < b.percentile ? a : b)
       : null;
 
-    // Resolve overall rank from percentile
-    const overallTierIndex = Math.min(7, Math.floor(overallPct / 12.5));
-    const overallRank = RANK_ORDER[overallTierIndex] || 'Unranked';
+    // Overall rank = lowest subcategory rank (Voltaic "complete" logic)
+    // You're Diamond Complete when ALL subcategories are at least Diamond
+    const withDataRanks = withData.map(a => RANK_ORDER.indexOf(a.rank)).filter(i => i >= 0);
+    const lowestRankIndex = withDataRanks.length ? Math.min(...withDataRanks) : 0;
+    const overallRank = RANK_ORDER[lowestRankIndex] || 'Unranked';
 
     return {
       axes,
