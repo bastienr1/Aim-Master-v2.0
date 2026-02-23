@@ -3,13 +3,12 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { relativeTime, getCategoryColor } from '@/lib/time';
 import {
-  RefreshCw, Crosshair, Star, CalendarDays, FileText,
+  RefreshCw, Crosshair,
   TrendingUp, TrendingDown, Minus, ArrowRight, Brain,
   AlertCircle, Link2
 } from 'lucide-react';
 import {
-  AreaChart, Area, ResponsiveContainer,
-  BarChart, Bar, XAxis, YAxis, Tooltip
+  AreaChart, Area, ResponsiveContainer
 } from 'recharts';
 import { ProfileOnboarding } from '@/components/onboarding/ProfileOnboarding';
 
@@ -64,15 +63,6 @@ export function Home({ profile, onNavigate, onRefresh, onTriggerCheckin }: HomeP
   const [loadingMomentum, setLoadingMomentum] = useState(true);
   const [errorMomentum, setErrorMomentum] = useState(false);
 
-  // Quick stats
-  const [quickStats, setQuickStats] = useState<any>(null);
-  const [loadingStats, setLoadingStats] = useState(true);
-  const [errorStats, setErrorStats] = useState(false);
-
-  // Activity
-  const [activityData, setActivityData] = useState<any[]>([]);
-  const [loadingActivity, setLoadingActivity] = useState(true);
-  const [errorActivity, setErrorActivity] = useState(false);
 
   // Charts
   const [chartData, setChartData] = useState<any>(null);
@@ -173,72 +163,6 @@ export function Home({ profile, onNavigate, onRefresh, onTriggerCheckin }: HomeP
     }
   }, [user]);
 
-  const loadQuickStats = useCallback(async () => {
-    if (!user) return;
-    setLoadingStats(true);
-    setErrorStats(false);
-    try {
-      const { data: kp } = await supabase
-        .from('kovaaks_profiles')
-        .select('scenarios_played_count')
-        .eq('user_id', user.id)
-        .maybeSingle();
-
-      const thirtyDaysAgo = new Date();
-      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-      const { count: recentCount } = await supabase
-        .from('score_history')
-        .select('id', { count: 'exact', head: true })
-        .eq('user_id', user.id)
-        .gte('session_date', thirtyDaysAgo.toISOString());
-
-      const { count: favCount } = await supabase
-        .from('user_scenario_stats')
-        .select('id', { count: 'exact', head: true })
-        .eq('user_id', user.id)
-        .eq('is_favorite', true);
-
-      const { data: allScores } = await supabase
-        .from('score_history')
-        .select('session_date')
-        .eq('user_id', user.id);
-
-      const uniqueDays = new Set(
-        (allScores || []).map((s: any) => s.session_date?.split('T')[0]).filter(Boolean)
-      );
-
-      setQuickStats({
-        scenariosPlayed: parseInt(String(kp?.scenarios_played_count || 0), 10),
-        recentScores: recentCount || 0,
-        favorites: favCount || 0,
-        trainingDays: uniqueDays.size,
-      });
-    } catch {
-      setErrorStats(true);
-    } finally {
-      setLoadingStats(false);
-    }
-  }, [user]);
-
-  const loadActivity = useCallback(async () => {
-    if (!user) return;
-    setLoadingActivity(true);
-    setErrorActivity(false);
-    try {
-      const { data, error } = await supabase
-        .from('score_history')
-        .select('id, score, session_date, score_type, scenarios(name, category)')
-        .eq('user_id', user.id)
-        .order('session_date', { ascending: false })
-        .limit(10);
-      if (error) throw error;
-      setActivityData(data || []);
-    } catch {
-      setErrorActivity(true);
-    } finally {
-      setLoadingActivity(false);
-    }
-  }, [user]);
 
   const loadCharts = useCallback(async () => {
     if (!user) return;
@@ -262,20 +186,7 @@ export function Home({ profile, onNavigate, onRefresh, onTriggerCheckin }: HomeP
         color: getCategoryColor(name),
       }));
 
-      const { data: topData, error: topErr } = await supabase
-        .from('user_scenario_stats')
-        .select('total_attempts, scenarios(name)')
-        .eq('user_id', user.id)
-        .order('total_attempts', { ascending: false })
-        .limit(5);
-      if (topErr) throw topErr;
-
-      const topPlayed = (topData || []).map((t: any) => ({
-        name: ((t.scenarios as any)?.name || 'Unknown').substring(0, 20),
-        attempts: t.total_attempts || 0,
-      }));
-
-      setChartData({ distribution, topPlayed });
+      setChartData({ distribution });
     } catch {
       setErrorCharts(true);
     } finally {
@@ -358,13 +269,11 @@ export function Home({ profile, onNavigate, onRefresh, onTriggerCheckin }: HomeP
     await Promise.all([
       loadSyncStatus(),
       loadMomentum(),
-      loadQuickStats(),
-      loadActivity(),
       loadCharts(),
       loadCoach(),
     ]);
     setSyncing(false);
-  }, [loadSyncStatus, loadMomentum, loadQuickStats, loadActivity, loadCharts, loadCoach]);
+  }, [loadSyncStatus, loadMomentum, loadCharts, loadCoach]);
 
   useEffect(() => {
     if (isProfileComplete) {
@@ -565,7 +474,6 @@ export function Home({ profile, onNavigate, onRefresh, onTriggerCheckin }: HomeP
     <div className="p-6 lg:p-8 animate-slide-up">
       <style>{`
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
-        @keyframes prBadgePulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }
       `}</style>
 
       {/* Header */}
@@ -666,105 +574,9 @@ export function Home({ profile, onNavigate, onRefresh, onTriggerCheckin }: HomeP
         <PRStreakTracker prData={prData} />
       </div>
 
-      {/* Section 2: Quick Stats */}
-      {loadingStats ? (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          {[...Array(4)].map((_, i) => <SkeletonBlock key={i} className="h-28" />)}
-        </div>
-      ) : errorStats ? (
-        <div className="mb-6"><SectionError onRetry={loadQuickStats} label="stats" /></div>
-      ) : (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          {[
-            { label: 'Scenarios Played', value: quickStats?.scenariosPlayed ?? 0, icon: Crosshair, color: '#53CADC' },
-            { label: 'Recent Scores', value: quickStats?.recentScores ?? 0, icon: FileText, color: '#FF4655' },
-            { label: 'Favorites', value: quickStats?.favorites ?? 0, icon: Star, color: '#FFCA3A' },
-            { label: 'Training Days', value: quickStats?.trainingDays ?? 0, icon: CalendarDays, color: '#3DD598' },
-          ].map((stat, i) => (
-            <div
-              key={i}
-              className="bg-[#2A3A47] border border-white/10 rounded-xl p-5 hover:border-[#FF4655]/30 hover:shadow-lg hover:shadow-[#FF4655]/10 hover:-translate-y-0.5 transition-all duration-200 group cursor-default"
-            >
-              <div className="flex items-center gap-2 mb-3">
-                <stat.icon
-                  className="w-5 h-5 transition-colors duration-200 group-hover:!text-[#FF4655]"
-                  style={{ color: stat.color }}
-                />
-                <span className="text-[#5A6872] text-xs font-['Inter'] uppercase tracking-wider">{stat.label}</span>
-              </div>
-              <p className="font-['JetBrains_Mono'] text-[32px] font-bold text-[#ECE8E1] leading-none group-hover:scale-105 transition-transform origin-left">
-                {stat.value.toLocaleString()}
-              </p>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Section 2.5: Mental Game Status */}
-      <MentalGameBar
-        streakDays={profile?.checkin_streak || 0}
-        onCheckin={() => onTriggerCheckin?.()}
-        onNavigate={onNavigate}
-      />
-
-      {/* Section 3: Activity + Coach */}
+      {/* Section 3: Mission Briefing + Battle Stats */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-        {/* Recent Activity */}
-        <div>
-          {loadingActivity ? (
-            <SkeletonBlock className="h-96" />
-          ) : errorActivity ? (
-            <SectionError onRetry={loadActivity} label="activity" />
-          ) : (
-            <div className="bg-[#2A3A47] border border-white/10 rounded-xl p-6 h-full">
-              <h3 className="font-['Rajdhani'] text-lg font-semibold text-[#ECE8E1] mb-4">
-                Recent Activity
-              </h3>
-              {activityData.length === 0 ? (
-                <div className="text-center py-8">
-                  <FileText className="w-8 h-8 text-[#5A6872] mx-auto mb-2" />
-                  <p className="text-[#5A6872] text-sm font-['Inter']">No recent scores recorded</p>
-                </div>
-              ) : (
-                <div className="space-y-1">
-                  {activityData.map((item: any) => {
-                    const scenarioName = (item.scenarios as any)?.name || 'Unknown';
-                    const category = (item.scenarios as any)?.category || '';
-                    const catColor = getCategoryColor(category);
-                    return (
-                      <div
-                        key={item.id}
-                        className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-white/5 transition-colors group/row border-l-2 border-transparent hover:border-l-2"
-                        onMouseEnter={(e) => {
-                          (e.currentTarget as HTMLElement).style.borderLeftColor = catColor;
-                        }}
-                        onMouseLeave={(e) => {
-                          (e.currentTarget as HTMLElement).style.borderLeftColor = 'transparent';
-                        }}
-                      >
-                        <div
-                          className="w-2 h-2 rounded-full shrink-0"
-                          style={{ backgroundColor: catColor }}
-                        />
-                        <span className="text-[#ECE8E1] text-sm font-['Inter'] truncate flex-1">
-                          {scenarioName}
-                        </span>
-                        <span className="font-['JetBrains_Mono'] text-sm font-semibold text-[#ECE8E1] shrink-0">
-                          {Math.round(Number(item.score) || 0).toLocaleString()}
-                        </span>
-                        <span className="text-[#5A6872] text-xs font-['Inter'] shrink-0 hidden sm:block w-20 text-right">
-                          {relativeTime(item.session_date)}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Mission Briefing (replaces AI Coach) */}
+        {/* Mission Briefing */}
         <div>
           {loadingCoach || loadingMomentum ? (
             <SkeletonBlock className="h-96" />
@@ -779,14 +591,11 @@ export function Home({ profile, onNavigate, onRefresh, onTriggerCheckin }: HomeP
             />
           )}
         </div>
-      </div>
 
-      {/* Section 4: Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Battle Stats Radar (replaces Aim Type Distribution) */}
+        {/* Battle Stats Radar */}
         <div>
           {loadingCharts ? (
-            <SkeletonBlock className="h-80" />
+            <SkeletonBlock className="h-96" />
           ) : errorCharts ? (
             <SectionError onRetry={loadCharts} label="charts" />
           ) : (
@@ -796,70 +605,14 @@ export function Home({ profile, onNavigate, onRefresh, onTriggerCheckin }: HomeP
             />
           )}
         </div>
-
-        {/* Top 5 Most Played */}
-        <div>
-          {loadingCharts ? (
-            <SkeletonBlock className="h-80" />
-          ) : errorCharts ? (
-            <SectionError onRetry={loadCharts} label="charts" />
-          ) : (
-            <div className="bg-[#2A3A47] border border-white/10 rounded-xl p-6">
-              <h3 className="font-['Rajdhani'] text-lg font-semibold text-[#ECE8E1] mb-4">
-                Top 5 Most Played
-              </h3>
-              {!chartData?.topPlayed?.length ? (
-                <div className="text-center py-8">
-                  <p className="text-[#5A6872] text-sm font-['Inter']">No scenario data yet</p>
-                </div>
-              ) : (
-                <div className="w-full h-56">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart
-                      data={chartData.topPlayed}
-                      layout="vertical"
-                      margin={{ left: 10, right: 20, top: 5, bottom: 5 }}
-                    >
-                      <defs>
-                        <linearGradient id="barGrad" x1="0" y1="0" x2="1" y2="0">
-                          <stop offset="0%" stopColor="#FF4655" />
-                          <stop offset="100%" stopColor="#53CADC" />
-                        </linearGradient>
-                      </defs>
-                      <XAxis type="number" hide />
-                      <YAxis
-                        type="category"
-                        dataKey="name"
-                        width={120}
-                        tick={{ fill: '#9CA8B3', fontSize: 11, fontFamily: 'Inter' }}
-                        axisLine={false}
-                        tickLine={false}
-                      />
-                      <Tooltip
-                        contentStyle={{
-                          backgroundColor: '#1C2B36',
-                          border: '1px solid rgba(255,255,255,0.1)',
-                          borderRadius: '8px',
-                          color: '#ECE8E1',
-                          fontFamily: 'Inter',
-                          fontSize: '12px',
-                        }}
-                        formatter={(value: any) => [`${value} attempts`, 'Plays']}
-                      />
-                      <Bar
-                        dataKey="attempts"
-                        fill="url(#barGrad)"
-                        radius={[0, 6, 6, 0]}
-                        barSize={20}
-                      />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
       </div>
+
+      {/* Section 4: Mental Game */}
+      <MentalGameBar
+        streakDays={profile?.checkin_streak || 0}
+        onCheckin={() => onTriggerCheckin?.()}
+        onNavigate={onNavigate}
+      />
     </div>
   );
 }
