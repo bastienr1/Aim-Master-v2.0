@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase';
 import { SummaryCards } from '@/components/mental-game/SummaryCards';
 import { HistoryTimeline } from '@/components/mental-game/HistoryTimeline';
 import { PatternsPlaceholder } from '@/components/mental-game/PatternsPlaceholder';
+import { SessionNotes } from '@/components/mental-game/SessionNotes';
 import { QuickTipCard } from '@/components/mental-game/QuickTipCard';
 import { EmptyState } from '@/components/mental-game/EmptyState';
 import { CheckinButton } from '@/components/dashboard/CheckinButton';
@@ -217,6 +218,11 @@ export function MentalGame({ onTriggerCheckin }: MentalGameProps) {
             </button>
           </div>
         )}
+      </section>
+
+      {/* Section 2.5 — Session Notes */}
+      <section className="mb-8">
+        <SessionNotes />
       </section>
 
       {/* Section 3 — Patterns Placeholder */}
