@@ -1128,11 +1128,11 @@ function ActiveProgramView({
                   </div>
                 ) : (
                   <div className="bg-[#2A3A47] border border-white/10 rounded-xl overflow-hidden">
-                    <div className="grid grid-cols-[1fr_100px_200px_100px] sm:grid-cols-[1fr_100px_200px_60px_100px] gap-2 px-4 py-2 border-b border-white/5 text-[10px] font-semibold font-['Inter'] uppercase tracking-wider text-[#5A6872]">
+                    <div className="grid grid-cols-[1fr_50px_80px_56px] sm:grid-cols-[1fr_100px_200px_60px_100px] gap-1 sm:gap-2 px-3 sm:px-4 py-2 border-b border-white/5 text-[10px] font-semibold font-['Inter'] uppercase tracking-wider text-[#5A6872]">
                       <span>Scenario</span>
                       <span className="text-center">Rank</span>
                       <span className="text-center">Score</span>
-                      <span className="text-center hidden sm:table-cell">Plays</span>
+                      <span className="text-center hidden sm:block">Plays</span>
                       <span className="text-center">Status</span>
                     </div>
                     {groupScenarios.map((scenario: any, idx: number) => {
@@ -1428,7 +1428,7 @@ function ScenarioRow({
 
   return (
     <div
-      className={`grid grid-cols-[1fr_100px_200px_100px] sm:grid-cols-[1fr_100px_200px_60px_100px] gap-2 px-4 py-2.5 items-center transition-colors hover:bg-white/[0.02] ${
+      className={`grid grid-cols-[1fr_50px_80px_56px] sm:grid-cols-[1fr_100px_200px_60px_100px] gap-1 sm:gap-2 px-3 sm:px-4 py-2.5 items-center transition-colors hover:bg-white/[0.02] ${
         !isLast ? 'border-b border-white/5' : ''
       } ${isCompleted ? 'opacity-60' : ''}`}
     >
@@ -1460,11 +1460,11 @@ function ScenarioRow({
       <div className="flex items-center justify-center gap-2">
         {score > 0 ? (
           <>
-            <span className="text-xs font-['JetBrains_Mono'] text-[#ECE8E1] w-[70px] text-right">
+            <span className="text-xs font-['JetBrains_Mono'] text-[#ECE8E1] text-right">
               {score.toLocaleString()}
             </span>
             {rankInfo.isVoltaic && (
-              <div className="w-20 h-1.5 rounded-full bg-[#1A2530] overflow-hidden shrink-0">
+              <div className="w-20 h-1.5 rounded-full bg-[#1A2530] overflow-hidden shrink-0 hidden sm:block">
                 <div
                   className="h-full rounded-full transition-all duration-300"
                   style={{
