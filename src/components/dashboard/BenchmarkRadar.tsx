@@ -122,7 +122,7 @@ function RankLabels() {
   return (
     <g className="rank-labels">
       {labelsToShow.map(({ name, index }) => {
-        const ringRadius = ((index + 1) / 8) * RADAR_RADIUS;
+        const ringRadius = ((index + 0.5) / 8) * RADAR_RADIUS;
         // Position along the top-right spoke (between axis 0 and 1)
         const { x, y } = polarToCartesian(20, ringRadius);
         return (

@@ -189,7 +189,7 @@ export function useBenchmarkRadarData(
     if (!data?.length) return empty;
 
     // Group by subcategory
-    const groups: Record<string, { percentiles: number[]; ranks: string[]; count: number }> = {};
+    const groups: Record<string, { percentiles: number[]; ranks: string[]; count: number; systems: string[] }> = {};
 
     for (const row of data) {
       const subcat = row.scenarios?.subcategory;
@@ -202,12 +202,13 @@ export function useBenchmarkRadarData(
       if (score <= 0) continue;
 
       const pct = computePercentile(score, tiers);
-      const rank = row.current_rank || resolveRankFromScore(score, tiers);
+      const rank = resolveRankFromScore(Number(row.high_score), tiers);
 
-      if (!groups[subcat]) groups[subcat] = { percentiles: [], ranks: [], count: 0 };
+      if (!groups[subcat]) groups[subcat] = { percentiles: [], ranks: [], count: 0, systems: [] };
       groups[subcat].percentiles.push(pct);
       groups[subcat].ranks.push(rank);
       groups[subcat].count++;
+      groups[subcat].systems.push(row.scenarios?.benchmark_system || '');
     }
 
     // Need at least 3 subcategories to draw a meaningful radar
@@ -230,7 +231,14 @@ export function useBenchmarkRadarData(
         continue;
       }
 
-      const avgPct = Math.round(group.percentiles.reduce((a, b) => a + b, 0) / group.percentiles.length);
+      // Prefer intermediate scores over novice when both exist
+      const hasIntermediate = group.systems.some(s => s === 'voltaic_intermediate');
+      let relevantPcts = group.percentiles;
+      if (hasIntermediate) {
+        // Only use intermediate percentiles
+        relevantPcts = group.percentiles.filter((_, i) => group.systems[i] === 'voltaic_intermediate');
+      }
+      const avgPct = Math.round(relevantPcts.reduce((a, b) => a + b, 0) / relevantPcts.length);
       const rank = getHighestRank(group.ranks);
 
       axes.push({
