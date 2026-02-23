@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState, useRef, useEffect, useCallback } from 'react';
 import { Trophy, Flame, Target } from 'lucide-react';
 import type { PRStreakData } from '@/types/debrief';
 
@@ -55,6 +55,32 @@ export function PRStreakTracker({ prData }: PRStreakTrackerProps) {
       .slice(0, 4);
   }, [prData.prs]);
 
+  // Group PRs into pages of 2 for mobile swipe
+  const pages = useMemo(() => {
+    const result: typeof topPRs[] = [];
+    for (let i = 0; i < topPRs.length; i += 2) {
+      result.push(topPRs.slice(i, i + 2));
+    }
+    return result;
+  }, [topPRs]);
+
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [activePage, setActivePage] = useState(0);
+
+  const handleScroll = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el || el.scrollWidth <= el.clientWidth) return;
+    const page = Math.round(el.scrollLeft / el.clientWidth);
+    setActivePage(page);
+  }, []);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    el.addEventListener('scroll', handleScroll, { passive: true });
+    return () => el.removeEventListener('scroll', handleScroll);
+  }, [handleScroll]);
+
   return (
     <>
       <style>{`
@@ -62,6 +88,7 @@ export function PRStreakTracker({ prData }: PRStreakTrackerProps) {
           0%, 100% { box-shadow: 0 0 8px rgba(61, 213, 152, 0.3); }
           50% { box-shadow: 0 0 20px rgba(61, 213, 152, 0.6); }
         }
+        .pr-swipe-container::-webkit-scrollbar { display: none; }
       `}</style>
       <div
         className="bg-[#2A3A47] border border-[#3DD598]/20 rounded-xl p-4"
@@ -85,45 +112,39 @@ export function PRStreakTracker({ prData }: PRStreakTrackerProps) {
           )}
         </div>
 
-        {/* 2x2 PR grid */}
-        <div className="grid grid-cols-2 gap-2 mb-3">
-          {topPRs.map((pr, i) => (
-            <div
-              key={`${pr.scenarioName}-${i}`}
-              className="rounded-lg px-2.5 py-2"
-              style={{
-                borderLeft: '2px solid #3DD598',
-                backgroundColor: 'rgba(61, 213, 152, 0.05)',
-              }}
-            >
-              <div className="flex items-center justify-between gap-1">
-                <span className="font-['Inter'] text-xs text-[#ECE8E1] truncate min-w-0">
-                  {pr.scenarioName}
-                </span>
-                {!pr.isFirstPlay && (
-                  <span className="font-['JetBrains_Mono'] text-[11px] text-[#3DD598] shrink-0">
-                    +{pr.improvement.toFixed(1)}%
-                  </span>
-                )}
-              </div>
-              <div className="flex items-center gap-1.5 mt-0.5">
-                {pr.isFirstPlay ? (
-                  <span className="font-['Inter'] text-[11px] text-[#3DD598]">
-                    First score!
-                  </span>
-                ) : (
-                  <>
-                    <span className="font-['JetBrains_Mono'] text-[11px] text-[#5A6872]">
-                      {Math.round(pr.previousBest).toLocaleString()}
-                    </span>
-                    <span className="text-[#5A6872] text-[11px]">{'\u{2192}'}</span>
-                    <span className="font-['JetBrains_Mono'] text-[11px] text-[#3DD598] font-semibold">
-                      {Math.round(pr.newScore).toLocaleString()}
-                    </span>
-                  </>
-                )}
-              </div>
+        {/* Mobile: horizontal swipeable pages of 2 cards */}
+        <div
+          ref={scrollRef}
+          className="sm:hidden flex overflow-x-auto snap-x snap-mandatory mb-1 pr-swipe-container"
+          style={{ scrollbarWidth: 'none' }}
+        >
+          {pages.map((page, pageIdx) => (
+            <div key={pageIdx} className="flex gap-2 min-w-full snap-center">
+              {page.map((pr, i) => (
+                <PRCard key={`${pr.scenarioName}-${pageIdx}-${i}`} pr={pr} />
+              ))}
             </div>
+          ))}
+        </div>
+
+        {/* Mobile: page dot indicators */}
+        {pages.length > 1 && (
+          <div className="sm:hidden flex justify-center gap-1.5 mb-2 mt-2">
+            {pages.map((_, i) => (
+              <div
+                key={i}
+                className={`w-1.5 h-1.5 rounded-full transition-colors ${
+                  i === activePage ? 'bg-[#3DD598]' : 'bg-[#5A6872]/40'
+                }`}
+              />
+            ))}
+          </div>
+        )}
+
+        {/* Desktop: 2x2 grid */}
+        <div className="hidden sm:grid grid-cols-2 gap-2 mb-3">
+          {topPRs.map((pr, i) => (
+            <PRCard key={`${pr.scenarioName}-${i}`} pr={pr} />
           ))}
         </div>
 
@@ -184,6 +205,48 @@ function PRDots({ prDaysInWindow }: { prDaysInWindow: Set<string> }) {
           </span>
         </div>
       ))}
+    </div>
+  );
+}
+
+// ─── PR Card (shared between mobile swipe and desktop grid) ───
+
+function PRCard({ pr }: { pr: { scenarioName: string; improvement: number; isFirstPlay: boolean; previousBest: number; newScore: number } }) {
+  return (
+    <div
+      className="rounded-lg px-2.5 py-2 flex-1 min-w-0"
+      style={{
+        borderLeft: '2px solid #3DD598',
+        backgroundColor: 'rgba(61, 213, 152, 0.05)',
+      }}
+    >
+      <div className="flex items-center justify-between gap-1">
+        <span className="font-['Inter'] text-xs text-[#ECE8E1] truncate min-w-0">
+          {pr.scenarioName}
+        </span>
+        {!pr.isFirstPlay && (
+          <span className="font-['JetBrains_Mono'] text-[11px] text-[#3DD598] shrink-0">
+            +{pr.improvement.toFixed(1)}%
+          </span>
+        )}
+      </div>
+      <div className="flex items-center gap-1.5 mt-0.5">
+        {pr.isFirstPlay ? (
+          <span className="font-['Inter'] text-[11px] text-[#3DD598]">
+            First score!
+          </span>
+        ) : (
+          <>
+            <span className="font-['JetBrains_Mono'] text-[11px] text-[#5A6872]">
+              {Math.round(pr.previousBest).toLocaleString()}
+            </span>
+            <span className="text-[#5A6872] text-[11px]">{'\u{2192}'}</span>
+            <span className="font-['JetBrains_Mono'] text-[11px] text-[#3DD598] font-semibold">
+              {Math.round(pr.newScore).toLocaleString()}
+            </span>
+          </>
+        )}
+      </div>
     </div>
   );
 }
