@@ -800,7 +800,7 @@ function ActiveProgramView({
 }) {
   const { user } = useAuth();
   const [syncing, setSyncing] = useState(false);
-  const [viewMode, setViewMode] = useState<'card' | 'list'>('card');
+  const [viewMode, setViewMode] = useState<'card' | 'list'>('list');
   const [copiedCode, setCopiedCode] = useState(false);
 
   const scenarios: any[] = Array.isArray(program.scenarios_data) ? program.scenarios_data.filter(Boolean) : [];
@@ -1128,11 +1128,11 @@ function ActiveProgramView({
                   </div>
                 ) : (
                   <div className="bg-[#2A3A47] border border-white/10 rounded-xl overflow-hidden">
-                    <div className="grid grid-cols-[1fr_100px_200px_60px_100px] gap-2 px-4 py-2 border-b border-white/5 text-[10px] font-semibold font-['Inter'] uppercase tracking-wider text-[#5A6872]">
+                    <div className="grid grid-cols-[1fr_100px_200px_100px] sm:grid-cols-[1fr_100px_200px_60px_100px] gap-2 px-4 py-2 border-b border-white/5 text-[10px] font-semibold font-['Inter'] uppercase tracking-wider text-[#5A6872]">
                       <span>Scenario</span>
                       <span className="text-center">Rank</span>
                       <span className="text-center">Score</span>
-                      <span className="text-center">Plays</span>
+                      <span className="text-center hidden sm:table-cell">Plays</span>
                       <span className="text-center">Status</span>
                     </div>
                     {groupScenarios.map((scenario: any, idx: number) => {
@@ -1428,14 +1428,14 @@ function ScenarioRow({
 
   return (
     <div
-      className={`grid grid-cols-[1fr_100px_200px_60px_100px] gap-2 px-4 py-2.5 items-center transition-colors hover:bg-white/[0.02] ${
+      className={`grid grid-cols-[1fr_100px_200px_100px] sm:grid-cols-[1fr_100px_200px_60px_100px] gap-2 px-4 py-2.5 items-center transition-colors hover:bg-white/[0.02] ${
         !isLast ? 'border-b border-white/5' : ''
       } ${isCompleted ? 'opacity-60' : ''}`}
     >
       <div className="flex items-center gap-2 min-w-0">
         {isCompleted && <CheckCircle className="w-3.5 h-3.5 text-[#3DD598] shrink-0" />}
         {needsPractice && <AlertCircle className="w-3.5 h-3.5 text-[#FFCA3A] shrink-0" />}
-        <span className="text-sm font-['Inter'] text-[#ECE8E1] truncate">
+        <span className="text-sm font-['Inter'] text-[#ECE8E1] whitespace-normal break-words">
           {scenarioName}
         </span>
       </div>
@@ -1482,7 +1482,7 @@ function ScenarioRow({
         )}
       </div>
 
-      <div className="text-center">
+      <div className="text-center hidden sm:block">
         <span className="text-xs font-['JetBrains_Mono'] text-[#5A6872]">
           {scoreInfo?.plays || 0}
         </span>
