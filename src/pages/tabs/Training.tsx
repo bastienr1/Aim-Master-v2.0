@@ -19,6 +19,8 @@ import { usePreTrainingGate } from '@/hooks/usePreTrainingGate';
 import { PlaylistIntroduction } from '@/components/training/PlaylistIntroduction';
 import { VerifiedBadge } from '@/components/training/VerifiedBadge';
 import { VerifiedShieldIcon } from '@/components/icons/VerifiedShieldIcon';
+import { useScenarioNotes } from '@/hooks/useScenarioNotes';
+import { ScenarioNoteEditor } from '@/components/training/ScenarioNoteEditor';
 
 
 interface TrainingProps {
@@ -802,6 +804,18 @@ function ActiveProgramView({
   const [syncing, setSyncing] = useState(false);
   const [viewMode, setViewMode] = useState<'card' | 'list'>('list');
   const [copiedCode, setCopiedCode] = useState(false);
+  const [expandedNoteScenario, setExpandedNoteScenario] = useState<string | null>(null);
+
+  const {
+    getNote,
+    updateNote,
+    hasNote,
+    saving: noteSaving,
+  } = useScenarioNotes(user?.id, program.id);
+
+  const toggleNoteEditor = (scenarioName: string) => {
+    setExpandedNoteScenario(prev => prev === scenarioName ? null : scenarioName);
+  };
 
   const scenarios: any[] = Array.isArray(program.scenarios_data) ? program.scenarios_data.filter(Boolean) : [];
   const completionMap = new Map(completions.map((c) => [c.scenario_name, c]));
@@ -1122,6 +1136,12 @@ function ActiveProgramView({
                           updating={updatingScenario === scenario.scenarioName}
                           scoreInfo={scenarioScores.get(scenario.scenarioName) || null}
                           onUpdate={(s) => onUpdateCompletion(scenario.scenarioName, s)}
+                          hasNote={hasNote(scenario.scenarioName)}
+                          noteText={getNote(scenario.scenarioName)}
+                          noteExpanded={expandedNoteScenario === scenario.scenarioName}
+                          onToggleNote={() => toggleNoteEditor(scenario.scenarioName)}
+                          onUpdateNote={updateNote}
+                          noteSaving={noteSaving}
                         />
                       );
                     })}
@@ -1147,6 +1167,12 @@ function ActiveProgramView({
                           scoreInfo={scenarioScores.get(scenario.scenarioName) || null}
                           onUpdate={(s) => onUpdateCompletion(scenario.scenarioName, s)}
                           isLast={idx === groupScenarios.length - 1}
+                          hasNote={hasNote(scenario.scenarioName)}
+                          noteText={getNote(scenario.scenarioName)}
+                          noteExpanded={expandedNoteScenario === scenario.scenarioName}
+                          onToggleNote={() => toggleNoteEditor(scenario.scenarioName)}
+                          onUpdateNote={updateNote}
+                          noteSaving={noteSaving}
                         />
                       );
                     })}
@@ -1408,6 +1434,12 @@ function ScenarioRow({
   scoreInfo,
   onUpdate,
   isLast,
+  hasNote: hasNoteFlag,
+  noteText,
+  noteExpanded,
+  onToggleNote,
+  onUpdateNote,
+  noteSaving,
 }: {
   scenarioName: string;
   status: string;
@@ -1415,6 +1447,12 @@ function ScenarioRow({
   scoreInfo: ScoreInfo | null;
   onUpdate: (status: string) => void;
   isLast: boolean;
+  hasNote: boolean;
+  noteText: string;
+  noteExpanded: boolean;
+  onToggleNote: () => void;
+  onUpdateNote: (scenarioName: string, text: string) => void;
+  noteSaving: boolean;
 }) {
   const score = scoreInfo?.highScore || 0;
   const dbThresholds = scoreInfo?.rankThresholds || null;
@@ -1525,9 +1563,39 @@ function ScenarioRow({
             >
               <RotateCcw className="w-3 h-3" />
             </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); onToggleNote(); }}
+              className={`
+                w-7 h-7 rounded-full flex items-center justify-center transition-all duration-200
+                ${hasNoteFlag
+                  ? 'text-[#53CADC] hover:bg-[#53CADC]/15'
+                  : 'text-[#5A6872] hover:text-[#9CA8B3] hover:bg-white/5'
+                }
+                ${noteExpanded ? 'bg-[#53CADC]/10' : ''}
+              `}
+              title={hasNoteFlag ? 'Edit note' : 'Add note'}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+              </svg>
+            </button>
           </>
         )}
       </div>
+
+      {noteExpanded && (
+        <div className="col-span-full px-4 pb-3" style={{ background: '#0F1923' }}>
+          <ScenarioNoteEditor
+            scenarioName={scenarioName}
+            note={noteText}
+            onUpdate={onUpdateNote}
+            saving={noteSaving}
+            variant="list"
+          />
+        </div>
+      )}
     </div>
   );
 }
@@ -1539,6 +1607,12 @@ function ScenarioCard({
   updating,
   scoreInfo,
   onUpdate,
+  hasNote: hasNoteFlag,
+  noteText,
+  noteExpanded,
+  onToggleNote,
+  onUpdateNote,
+  noteSaving,
 }: {
   scenarioName: string;
   aimType: string;
@@ -1546,6 +1620,12 @@ function ScenarioCard({
   updating: boolean;
   scoreInfo: ScoreInfo | null;
   onUpdate: (status: string) => void;
+  hasNote: boolean;
+  noteText: string;
+  noteExpanded: boolean;
+  onToggleNote: () => void;
+  onUpdateNote: (scenarioName: string, text: string) => void;
+  noteSaving: boolean;
 }) {
   const aimColor = getAimColor(aimType);
   const isCompleted = status === 'completed';
@@ -1636,9 +1716,67 @@ function ScenarioCard({
             >
               <RotateCcw className="w-3.5 h-3.5" />
             </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); onToggleNote(); }}
+              className={`
+                flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[13px] font-['Inter'] font-medium
+                transition-all duration-200
+                ${hasNoteFlag
+                  ? 'bg-[#53CADC]/10 border border-[#53CADC]/30 text-[#53CADC]'
+                  : 'bg-[#1C2B36] border border-white/10 text-[#9CA8B3] hover:text-[#ECE8E1] hover:border-white/20'
+                }
+              `}
+              title={hasNoteFlag ? 'Edit note' : 'Add note'}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+              </svg>
+              Note
+            </button>
           </>
         )}
       </div>
+
+      {noteExpanded && (
+        <ScenarioNoteEditor
+          scenarioName={scenarioName}
+          note={noteText}
+          onUpdate={onUpdateNote}
+          saving={noteSaving}
+          variant="card"
+        />
+      )}
+
+      {!noteExpanded && hasNoteFlag && (
+        <div
+          onClick={(e) => { e.stopPropagation(); onToggleNote(); }}
+          className="mt-2 px-1 cursor-pointer group/note"
+        >
+          <div className="flex items-center gap-1.5">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#53CADC"
+              strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.5 }}>
+              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+            </svg>
+            <span
+              className="group-hover/note:text-[#ECE8E1] transition-colors"
+              style={{
+                fontFamily: "'Inter', sans-serif",
+                fontSize: '12px',
+                color: '#5A6872',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+                maxWidth: '280px',
+              }}
+            >
+              {noteText.split('\n')[0]}
+            </span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
