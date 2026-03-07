@@ -18,8 +18,10 @@ import { MissionBriefing } from '@/components/dashboard/MissionBriefing';
 import { MentalGameBar } from '@/components/dashboard/MentalGameBar';
 import { PRStreakTracker } from '@/components/dashboard/PRStreakTracker';
 import { BenchmarkRadar } from '@/components/dashboard/BenchmarkRadar';
+import { ActiveGoalWidget } from '@/components/dashboard/ActiveGoalWidget';
 import { usePRDetection } from '@/hooks/usePRDetection';
 import { useBenchmarkRadarData, BenchmarkScenarioRow } from '@/hooks/useBenchmarkRadarData';
+import { useGoals } from '@/hooks/useGoals';
 
 interface HomeProps {
   profile: any;
@@ -50,6 +52,7 @@ function SectionError({ onRetry, label }: { onRetry: () => void; label: string }
 export function Home({ profile, onNavigate, onRefresh, onTriggerCheckin }: HomeProps) {
   const { user } = useAuth();
   const prData = usePRDetection();
+  const { primaryGoal } = useGoals();
 
   // Profile completeness check — wait for profile to load before deciding
   const isProfileLoaded = profile !== null && profile !== undefined;
@@ -614,6 +617,9 @@ export function Home({ profile, onNavigate, onRefresh, onTriggerCheckin }: HomeP
         <PRStreakTracker prData={prData} />
       </div>
 
+      {/* Active Goal Widget */}
+      <ActiveGoalWidget onNavigate={onNavigate} />
+
       {/* Section 3: Mission Briefing + Battle Stats */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
         {/* Mission Briefing */}
@@ -628,6 +634,7 @@ export function Home({ profile, onNavigate, onRefresh, onTriggerCheckin }: HomeP
               coachData={coachData}
               momentumData={momentumData}
               onNavigate={onNavigate}
+              primaryGoal={primaryGoal}
             />
           )}
         </div>

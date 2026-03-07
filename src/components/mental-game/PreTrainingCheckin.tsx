@@ -1,9 +1,11 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { Target } from 'lucide-react';
 import { CheckinSlider } from './CheckinSlider';
 import { IntentSelector } from './IntentSelector';
 import { CoachingInsight } from './CoachingInsight';
 import { SkipToast } from './SkipToast';
 import { useCheckinData } from '@/hooks/useCheckinData';
+import { useGoals } from '@/hooks/useGoals';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { ENERGY_CONFIG, FOCUS_CONFIG, MOOD_CONFIG } from '@/constants/checkin-config';
@@ -16,7 +18,7 @@ interface PreTrainingCheckinProps {
   onSwitchToTraining?: () => void;
 }
 
-type ModalState = 'form' | 'coaching' | 'exiting';
+type ModalState = 'form' | 'goal_reminder' | 'coaching' | 'exiting';
 
 export function PreTrainingCheckin({ isOpen, onClose, onComplete, onIntentComplete, onSwitchToTraining }: PreTrainingCheckinProps) {
   const { user } = useAuth();
@@ -28,6 +30,7 @@ export function PreTrainingCheckin({ isOpen, onClose, onComplete, onIntentComple
     getCoachingInsight,
     updateCoachingTip,
   } = useCheckinData();
+  const { primaryGoal } = useGoals();
 
   // Form state
   const [energy, setEnergy] = useState<number | null>(null);
@@ -155,16 +158,24 @@ export function PreTrainingCheckin({ isOpen, onClose, onComplete, onIntentComple
         return;
       }
 
-      // For push_pr and maintain: show coaching insight
+      // For push_pr and maintain: show goal reminder (if goal exists) then coaching
       setSubmitting(false);
-      setModalState('coaching');
+      if (primaryGoal) {
+        setModalState('goal_reminder');
+      } else {
+        setModalState('coaching');
+      }
     } catch (err) {
       console.error('Submit error:', err);
       setSubmitting(false);
       setCoachingMessage('Every session counts. Stay present and trust the process.');
       setModalState('coaching');
     }
-  }, [canSubmit, submitting, energy, focus, mood, intent, saveCheckin, getCheckinCount, getTier, getCoachingInsight, updateCoachingTip, onIntentComplete, onSwitchToTraining, onComplete]);
+  }, [canSubmit, submitting, energy, focus, mood, intent, saveCheckin, getCheckinCount, getTier, getCoachingInsight, updateCoachingTip, onIntentComplete, onSwitchToTraining, onComplete, primaryGoal]);
+
+  const handleGoalReminderContinue = useCallback(() => {
+    setModalState('coaching');
+  }, []);
 
   const handleSkip = useCallback(async () => {
     await saveSkippedCheckin();
@@ -232,7 +243,7 @@ export function PreTrainingCheckin({ isOpen, onClose, onComplete, onIntentComple
                 style={{
                   opacity: modalState === 'form' ? 1 : 0,
                   transform: modalState === 'form' ? 'translateY(0)' : 'translateY(-8px)',
-                  display: (modalState === 'coaching' || modalState === 'exiting') && coachingMessage ? 'none' : 'block',
+                  display: (modalState === 'goal_reminder' || modalState === 'coaching' || modalState === 'exiting') && (coachingMessage || modalState === 'goal_reminder') ? 'none' : 'block',
                   pointerEvents: modalState === 'form' ? 'auto' : 'none',
                 }}
               >
@@ -344,6 +355,62 @@ export function PreTrainingCheckin({ isOpen, onClose, onComplete, onIntentComple
                   </div>
                 </div>
               </div>
+
+              {/* ─── GOAL REMINDER STATE ─── */}
+              {modalState === 'goal_reminder' && primaryGoal && (
+                <div className="min-h-[200px] flex flex-col justify-center">
+                  <div className="rounded-xl p-5 bg-[#1C2B36] border border-[#FF4655]/20 mb-5">
+                    <div className="flex items-center gap-2 mb-3">
+                      <Target className="w-4 h-4 text-[#FF4655]" />
+                      <span className="text-[10px] font-['JetBrains_Mono'] text-[#FF4655] uppercase tracking-wider">
+                        Today's Focus
+                      </span>
+                    </div>
+                    <h3 className="font-['Rajdhani'] text-lg font-semibold text-[#ECE8E1] mb-2">
+                      {primaryGoal.title}
+                    </h3>
+                    {primaryGoal.target_value > 0 && (
+                      <div className="mb-2">
+                        <div className="h-2 rounded-full bg-white/5 overflow-hidden">
+                          <div
+                            className="h-full rounded-full"
+                            style={{
+                              width: `${Math.min(100, Math.round((primaryGoal.current_value / primaryGoal.target_value) * 100))}%`,
+                              background: 'linear-gradient(90deg, #3DD59880, #3DD598)',
+                            }}
+                          />
+                        </div>
+                        <span className="text-[11px] font-['JetBrains_Mono'] text-[#5A6872] mt-1 block">
+                          {Math.round((primaryGoal.current_value / primaryGoal.target_value) * 100)}% complete
+                          {primaryGoal.deadline && (() => {
+                            const days = Math.max(0, Math.ceil((new Date(primaryGoal.deadline).getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
+                            return ` · ${days}d left`;
+                          })()}
+                        </span>
+                      </div>
+                    )}
+                    {primaryGoal.description && (
+                      <p className="text-xs font-['Inter'] text-[#9CA8B3] mt-2">{primaryGoal.description}</p>
+                    )}
+                  </div>
+
+                  <div className="flex gap-3">
+                    <button
+                      onClick={handleGoalReminderContinue}
+                      className="flex-1 rounded-lg py-3 text-sm font-semibold font-['Inter'] text-white transition-all"
+                      style={{ backgroundColor: '#FF4655' }}
+                    >
+                      Keep This Focus
+                    </button>
+                    <button
+                      onClick={handleGoalReminderContinue}
+                      className="px-4 rounded-lg py-3 text-sm font-['Inter'] text-[#9CA8B3] bg-white/5 hover:bg-white/10 transition-all"
+                    >
+                      Skip
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {/* ─── COACHING STATE ─── */}
               {(modalState === 'coaching' || (modalState === 'exiting' && coachingMessage)) && (

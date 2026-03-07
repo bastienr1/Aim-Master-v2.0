@@ -1,4 +1,5 @@
 import { Sparkles, AlertCircle, Crosshair, Brain, Target, ArrowRight } from 'lucide-react';
+import type { Goal } from '@/types/goals';
 
 type CoachState = 'improving' | 'declining' | 'inactive' | 'steady' | 'insufficient';
 
@@ -14,6 +15,7 @@ interface MissionBriefingProps {
     delta?: number;
   } | null;
   onNavigate: (tab: string) => void;
+  primaryGoal?: Goal | null;
 }
 
 const STATE_CONFIG: Record<CoachState, {
@@ -26,7 +28,7 @@ const STATE_CONFIG: Record<CoachState, {
   insufficient: { color: '#53CADC', glow: '#53CADC50', icon: Brain,       label: 'Building your profile' },
 };
 
-export function MissionBriefing({ coachState, coachData, momentumData, onNavigate }: MissionBriefingProps) {
+export function MissionBriefing({ coachState, coachData, momentumData, onNavigate, primaryGoal }: MissionBriefingProps) {
   const config = STATE_CONFIG[coachState];
   const Icon = config.icon;
 
@@ -55,6 +57,7 @@ export function MissionBriefing({ coachState, coachData, momentumData, onNavigat
           Icon={Icon}
           coachData={coachData}
           momentumData={momentumData}
+          primaryGoal={primaryGoal}
         />
       </div>
 
@@ -71,13 +74,14 @@ export function MissionBriefing({ coachState, coachData, momentumData, onNavigat
 
 /** Inner component — keeps the parent clean */
 function MissionContent({
-  coachState, config, Icon, coachData, momentumData
+  coachState, config, Icon, coachData, momentumData, primaryGoal
 }: {
   coachState: CoachState;
   config: typeof STATE_CONFIG[CoachState];
   Icon: any;
   coachData: MissionBriefingProps['coachData'];
   momentumData: MissionBriefingProps['momentumData'];
+  primaryGoal?: Goal | null;
 }) {
   const delta = momentumData?.delta;
   const deltaStr = delta ? ` ${delta > 0 ? '+' : ''}${delta}%` : '';
@@ -85,30 +89,46 @@ function MissionContent({
   const strongCat = coachData?.strongest?.category;
   const scenario = coachData?.suggestedScenario;
 
+  // Goal-aware mission text
+  const goalProgress = primaryGoal && primaryGoal.target_value > 0
+    ? Math.round((primaryGoal.current_value / primaryGoal.target_value) * 100)
+    : null;
+  const goalDaysLeft = primaryGoal?.deadline
+    ? Math.max(0, Math.ceil((new Date(primaryGoal.deadline).getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
+    : null;
+
+  const goalMission = primaryGoal
+    ? primaryGoal.goal_type === 'habit'
+      ? `Your habit goal "${primaryGoal.title}" is at ${primaryGoal.current_value}/${primaryGoal.target_value} ${primaryGoal.unit}. Keep the momentum.`
+      : primaryGoal.category
+        ? `Your ${primaryGoal.category} goal is at ${goalProgress}%${goalDaysLeft !== null ? ` with ${goalDaysLeft}d left` : ''}. Focus on ${primaryGoal.category} scenarios today.`
+        : null
+    : null;
+
   const messages: Record<CoachState, { body: string; mission: string | null }> = {
     improving: {
       body: `Momentum is up${deltaStr} — this is the time to push boundaries, not coast.`,
-      mission: weakCat
+      mission: goalMission || (weakCat
         ? `Push into ${weakCat} scenarios — your ${strongCat || 'strengths'} can carry. Growth lives in the discomfort.`
-        : 'Keep the streak alive. Focus on scenarios that challenge you.',
+        : 'Keep the streak alive. Focus on scenarios that challenge you.'),
     },
     declining: {
       body: `Scores dipped${deltaStr} — this is normal. Plateaus and dips are part of the process.`,
-      mission: weakCat
+      mission: goalMission || (weakCat
         ? `Short focused session on ${weakCat}. Quality over quantity — 15 mindful minutes beats 60 on autopilot.`
-        : 'Take a focused 15-minute session. Deliberate reps, full attention.',
+        : 'Take a focused 15-minute session. Deliberate reps, full attention.'),
     },
     inactive: {
       body: `${coachData?.daysSinceLast || '?'} days since your last session. Muscle memory peaks at 48-72 hours between sessions.`,
-      mission: 'A quick 10-minute warmup routine will protect your gains. Just showing up matters more than intensity today.',
+      mission: goalMission || 'A quick 10-minute warmup routine will protect your gains. Just showing up matters more than intensity today.',
     },
     steady: {
       body: 'Consistent performance is the foundation. Try pushing into scenarios that challenge you to break through.',
-      mission: weakCat ? `${weakCat} — your biggest growth opportunity` : null,
+      mission: goalMission || (weakCat ? `${weakCat} — your biggest growth opportunity` : null),
     },
     insufficient: {
       body: 'Keep training — the coach needs more data to provide personalized missions.',
-      mission: null,
+      mission: goalMission || null,
     },
   };
 

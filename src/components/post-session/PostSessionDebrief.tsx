@@ -1,9 +1,11 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useDebriefData } from '@/hooks/useDebriefData';
+import { useGoals } from '@/hooks/useGoals';
 import type { GroupedSession, SessionDebrief } from '@/types/debrief';
 import { SessionSummaryScreen } from './SessionSummaryScreen';
 import { SolutionAnalysisScreen } from './SolutionAnalysisScreen';
 import { SessionRatingScreen } from './SessionRatingScreen';
+import { GoalCheckInScreen } from './GoalCheckInScreen';
 
 interface PostSessionDebriefProps {
   isOpen: boolean;
@@ -12,12 +14,13 @@ interface PostSessionDebriefProps {
   sessionData: GroupedSession | null;
 }
 
-type Screen = 'summary' | 'analysis' | 'rating' | 'exiting';
+type Screen = 'summary' | 'analysis' | 'rating' | 'goal_checkin' | 'exiting';
 
 const SCREEN_LABELS: Record<string, string> = {
-  summary: '1/3',
-  analysis: '2/3',
-  rating: '3/3',
+  summary: '1/4',
+  analysis: '2/4',
+  rating: '3/4',
+  goal_checkin: '4/4',
 };
 
 export function PostSessionDebrief({
@@ -27,6 +30,7 @@ export function PostSessionDebrief({
   sessionData,
 }: PostSessionDebriefProps) {
   const { saveDebrief, getDebriefCount } = useDebriefData();
+  const { primaryGoal, updateProgress } = useGoals();
 
   // Fallback empty session for when debrief opens without score data
   const emptySession: GroupedSession = {
@@ -133,21 +137,66 @@ export function PostSessionDebrief({
   const handleRatingComplete = useCallback(
     async (quality: number) => {
       if (submitting) return;
-      setSubmitting(true);
 
       debriefRef.current.sessionQuality = quality;
 
+      // If there's an active primary goal, show goal check-in screen
+      if (primaryGoal) {
+        transitionToScreen('goal_checkin');
+        return;
+      }
+
+      // No goal — save and exit
+      setSubmitting(true);
       try {
         await saveDebrief(session, debriefRef.current);
       } catch (err) {
         console.error('Failed to save debrief:', err);
       }
+      setSubmitting(false);
+      exitModal(onComplete);
+    },
+    [session, submitting, saveDebrief, exitModal, onComplete, primaryGoal, transitionToScreen]
+  );
+
+  const handleGoalCheckInComplete = useCallback(
+    async (data: { sentiment: 'setback' | 'neutral' | 'progress'; note: string }) => {
+      if (submitting) return;
+      setSubmitting(true);
+
+      try {
+        // Save debrief first
+        const debriefId = await saveDebrief(session, debriefRef.current);
+
+        // Update goal progress based on sentiment
+        if (primaryGoal) {
+          const deltaMap = { setback: -1, neutral: 0, progress: 1 };
+          const delta = deltaMap[data.sentiment];
+          if (delta !== 0) {
+            await updateProgress(primaryGoal.id, delta, 'debrief', data.note || undefined, debriefId || undefined);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to save debrief with goal:', err);
+      }
 
       setSubmitting(false);
       exitModal(onComplete);
     },
-    [session, submitting, saveDebrief, exitModal, onComplete]
+    [session, submitting, saveDebrief, exitModal, onComplete, primaryGoal, updateProgress]
   );
+
+  const handleGoalCheckInSkip = useCallback(async () => {
+    if (submitting) return;
+    setSubmitting(true);
+    try {
+      await saveDebrief(session, debriefRef.current);
+    } catch (err) {
+      console.error('Failed to save debrief:', err);
+    }
+    setSubmitting(false);
+    exitModal(onComplete);
+  }, [session, submitting, saveDebrief, exitModal, onComplete]);
 
   const handleDismiss = useCallback(() => {
     exitModal(onClose);
@@ -236,6 +285,14 @@ export function PostSessionDebrief({
                   <SessionRatingScreen
                     debriefCount={debriefCount}
                     onComplete={handleRatingComplete}
+                  />
+                )}
+                {screen === 'goal_checkin' && primaryGoal && (
+                  <GoalCheckInScreen
+                    goal={primaryGoal}
+                    sessionCategories={session.categories}
+                    onComplete={handleGoalCheckInComplete}
+                    onSkip={handleGoalCheckInSkip}
                   />
                 )}
               </div>
