@@ -133,12 +133,16 @@ export function PreTrainingCheckin({ isOpen, onClose, onComplete, onIntentComple
       }
 
       const selectedIntent = intent!;
-			console.log('selectedIntent:', selectedIntent);
-			console.log('onIntentComplete exists:', !!onIntentComplete);
-			console.log('onSwitchToTraining exists:', !!onSwitchToTraining);
 
+      // If there's an active primary goal, always show the goal reminder first
+      if (primaryGoal) {
+        setSubmitting(false);
+        setModalState('goal_reminder');
+        return;
+      }
+
+      // No goal — use original intent-based flow
       if (selectedIntent === 'improve') {
-        // Show encouragement overlay for 2.5s, keep button in loading state
         setShowEncouragement(true);
         setTimeout(() => {
           setSubmitting(false);
@@ -158,13 +162,9 @@ export function PreTrainingCheckin({ isOpen, onClose, onComplete, onIntentComple
         return;
       }
 
-      // For push_pr and maintain: show goal reminder (if goal exists) then coaching
+      // For push_pr and maintain: show coaching insight
       setSubmitting(false);
-      if (primaryGoal) {
-        setModalState('goal_reminder');
-      } else {
-        setModalState('coaching');
-      }
+      setModalState('coaching');
     } catch (err) {
       console.error('Submit error:', err);
       setSubmitting(false);
@@ -174,8 +174,30 @@ export function PreTrainingCheckin({ isOpen, onClose, onComplete, onIntentComple
   }, [canSubmit, submitting, energy, focus, mood, intent, saveCheckin, getCheckinCount, getTier, getCoachingInsight, updateCoachingTip, onIntentComplete, onSwitchToTraining, onComplete, primaryGoal]);
 
   const handleGoalReminderContinue = useCallback(() => {
+    const selectedIntent = intent;
+
+    if (selectedIntent === 'improve') {
+      setShowEncouragement(true);
+      setModalState('form'); // show encouragement overlay on form
+      setTimeout(() => {
+        setShowEncouragement(false);
+        onIntentComplete?.(selectedIntent);
+        onSwitchToTraining?.();
+        exitModal(onComplete);
+      }, 2500);
+      return;
+    }
+
+    if (selectedIntent === 'warmup') {
+      onIntentComplete?.(selectedIntent);
+      onSwitchToTraining?.();
+      exitModal(onComplete);
+      return;
+    }
+
+    // push_pr / maintain → show coaching insight
     setModalState('coaching');
-  }, []);
+  }, [intent, onIntentComplete, onSwitchToTraining, onComplete]);
 
   const handleSkip = useCallback(async () => {
     await saveSkippedCheckin();
