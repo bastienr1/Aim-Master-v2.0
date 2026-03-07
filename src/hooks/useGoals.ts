@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import type { Goal, GoalProgressEntry } from '@/types/goals';
@@ -100,13 +101,16 @@ export function useGoals(): UseGoalsReturn {
 
       if (error) {
         console.error('Create goal error:', error);
+        toast.error(`Failed to create goal: ${error.message}`);
         return null;
       }
 
+      toast.success('Goal created!');
       await loadGoals();
       return data as Goal;
     } catch (err) {
       console.error('createGoal error:', err);
+      toast.error('Failed to create goal');
       return null;
     }
   }, [user, loadGoals]);
