@@ -62,6 +62,67 @@ const AXIS_ORDER = [
   'Linear', 'Control', 'Stability',
 ];
 
+// Scenario name → subcategory mapping (Voltaic S5 naming conventions)
+// Fallback when subcategory column has parent categories instead of 9-axis names
+const SCENARIO_SUBCATEGORY_MAP: Record<string, string> = {
+  // Clicking - Dynamic
+  'VT Floating Heads': 'Dynamic',
+  'VT Popcorn': 'Dynamic',
+  // Clicking - Static
+  'VT ww5t': 'Static',
+  'VT Pasu': 'Static',
+  'VT 1w3ts': 'Static',
+  // Clicking - Linear
+  'VT Frogtagon': 'Linear',
+  // Tracking - Reactive
+  'VT Bounceshot': 'Reactive',
+  'VT 1w2ts reload': 'Reactive',
+  // Tracking - Precise
+  'VT PreciseOrb': 'Precise',
+  'VT ArcTS': 'Precise',
+  'VT PGT': 'Precise',
+  // Tracking - Control
+  'VT Controlsphere': 'Control',
+  'VT Raw Control': 'Control',
+  'VT Ground': 'Control',
+  // Tracking - Linear
+  'VT Aether': 'Linear',
+  'VT Frogtrack': 'Linear',
+  'VT Snake Track': 'Linear',
+  // Switching - Speed
+  'VT DotTS': 'Speed',
+  'VT EddieTS': 'Speed',
+  // Switching - Evasive
+  'VT DriftTS': 'Evasive',
+  'VT FlyTS': 'Evasive',
+  // Switching - Stability
+  'VT Penta Bounce': 'Stability',
+  'VT ControlTS': 'Stability',
+};
+
+/**
+ * Resolve the real 9-axis subcategory for a scenario.
+ * Checks: subcategory column → category column → scenario name prefix.
+ */
+function resolveSubcategory(row: BenchmarkScenarioRow): string | null {
+  const subcat = row.scenarios?.subcategory;
+  const cat = row.scenarios?.category;
+  const name = row.scenarios?.name || '';
+
+  // If subcategory is already a valid 9-axis name, use it
+  if (subcat && PILLAR_MAP[subcat]) return subcat;
+
+  // If category has the real subcategory (columns swapped), use it
+  if (cat && PILLAR_MAP[cat]) return cat;
+
+  // Derive from scenario name
+  for (const [prefix, mapped] of Object.entries(SCENARIO_SUBCATEGORY_MAP)) {
+    if (name.startsWith(prefix)) return mapped;
+  }
+
+  return null;
+}
+
 // ─── Percentile Computation ───
 
 interface RankTier {
@@ -208,8 +269,8 @@ export function useBenchmarkRadarData(
     const groups: Record<string, { percentiles: number[]; ranks: string[]; count: number; systems: string[] }> = {};
 
     for (const row of cleanData) {
-      const subcat = row.scenarios?.subcategory;
-      if (!subcat || !PILLAR_MAP[subcat]) continue;
+      const subcat = resolveSubcategory(row);
+      if (!subcat) continue;
 
       const tiers = row.scenarios?.rank_thresholds?.tiers;
       if (!tiers?.length) continue;
