@@ -188,10 +188,26 @@ export function useBenchmarkRadarData(
 
     if (!data?.length) return empty;
 
+    // --- DEDUPLICATION FIX ---
+    // user_scenario_stats may contain duplicate rows per scenario (same scenario_id,
+    // different scores). Keep only the highest score per scenario name to prevent
+    // phantom low scores from dragging percentile averages down.
+    const bestByScenario = new Map<string, BenchmarkScenarioRow>();
+    for (const row of data) {
+      const name = row.scenarios?.name;
+      if (!name) continue;
+      const existing = bestByScenario.get(name);
+      if (!existing || Number(row.high_score) > Number(existing.high_score)) {
+        bestByScenario.set(name, row);
+      }
+    }
+    const cleanData = Array.from(bestByScenario.values());
+    // --- END DEDUPLICATION FIX ---
+
     // Group by subcategory
     const groups: Record<string, { percentiles: number[]; ranks: string[]; count: number; systems: string[] }> = {};
 
-    for (const row of data) {
+    for (const row of cleanData) {
       const subcat = row.scenarios?.subcategory;
       if (!subcat || !PILLAR_MAP[subcat]) continue;
 
