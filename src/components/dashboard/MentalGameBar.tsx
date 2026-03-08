@@ -9,7 +9,7 @@ interface MentalGameBarProps {
 export function MentalGameBar({ streakDays, onCheckin, onNavigate }: MentalGameBarProps) {
   return (
     <div
-      className="bg-gradient-to-r from-[#1C2B36] to-[#1C2B36] border border-[#53CADC]/15 rounded-xl p-5 mb-6 hover:border-[#53CADC]/30 transition-all cursor-pointer group"
+      className="bg-[#1C2B36]/60 border border-white/[0.03] rounded-lg p-3.5 mb-6 hover:border-[#53CADC]/20 transition-all cursor-pointer group"
       onClick={() => onNavigate('mental')}
     >
       <div className="flex items-center justify-between">

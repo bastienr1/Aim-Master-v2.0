@@ -56,7 +56,14 @@ export function GoalRoadmap({ goal, strategy, onNavigate }: GoalRoadmapProps) {
     : null;
 
   return (
-    <div className="bg-[#2A3A47] border border-white/10 rounded-xl p-5">
+    <div
+      className="rounded-xl p-5"
+      style={{
+        background: 'linear-gradient(135deg, #141C24 0%, #1A2A35 100%)',
+        border: '1px solid rgba(255,70,85,0.12)',
+        boxShadow: '0 0 40px rgba(255,70,85,0.03)',
+      }}
+    >
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
@@ -73,7 +80,7 @@ export function GoalRoadmap({ goal, strategy, onNavigate }: GoalRoadmapProps) {
       </div>
 
       {/* Goal title */}
-      <h3 className="text-[#ECE8E1] font-['Rajdhani'] font-bold text-lg mb-3">
+      <h3 className="text-[#ECE8E1] font-['Rajdhani'] font-bold text-2xl mb-3">
         {goal.title}
       </h3>
 
@@ -97,8 +104,11 @@ export function GoalRoadmap({ goal, strategy, onNavigate }: GoalRoadmapProps) {
                   {gate.percentile}%
                 </span>
                 <span
-                  className="text-[10px] font-['JetBrains_Mono'] ml-1"
-                  style={{ color: RANK_COLORS[gate.rank] || '#5A6872' }}
+                  className="text-[10px] font-['JetBrains_Mono'] ml-1 font-bold px-1.5 py-0.5 rounded"
+                  style={{
+                    color: RANK_COLORS[gate.rank] || '#5A6872',
+                    backgroundColor: `${RANK_COLORS[gate.rank] || '#5A6872'}18`,
+                  }}
                 >
                   {gate.rank}
                 </span>

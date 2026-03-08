@@ -545,90 +545,89 @@ export function Home({ profile, onNavigate, onRefresh, onTriggerCheckin }: HomeP
         </button>
       </div>
 
-      {/* Section 1: Performance Momentum */}
-      {loadingMomentum ? (
-        <SkeletonBlock className="h-28 mb-6" />
-      ) : errorMomentum ? (
-        <div className="mb-6"><SectionError onRetry={loadMomentum} label="momentum" /></div>
-      ) : (
-        <div
-          className="rounded-xl p-5 mb-6 bg-gradient-to-r from-[#1C2B36] to-[#2A3A47] border-l-4 transition-all"
-          style={{
-            borderLeftColor: momentumConfig.color,
-            boxShadow: momentumData?.state === 'improving'
-              ? '0 0 30px rgba(61,213,152,0.06)'
-              : momentumData?.state === 'declining'
-              ? '0 0 30px rgba(255,202,58,0.06)'
-              : 'none',
-          }}
-        >
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <div
-                className="w-12 h-12 rounded-xl flex items-center justify-center"
-                style={{ backgroundColor: `${momentumConfig.color}15` }}
-              >
-                <momentumConfig.icon className="w-6 h-6" style={{ color: momentumConfig.color }} />
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <h3 className="font-['Rajdhani'] text-lg font-semibold text-[#ECE8E1]">
-                    Performance Momentum
-                  </h3>
-                  <span
-                    className="text-xs font-semibold font-['Inter'] px-2 py-0.5 rounded-full"
-                    style={{
-                      backgroundColor: `${momentumConfig.color}15`,
-                      color: momentumConfig.color,
-                    }}
+      {/* Section 1: Performance Momentum + PR Streak — side by side */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+        {/* Performance Momentum */}
+        <div>
+          {loadingMomentum ? (
+            <SkeletonBlock className="h-48" />
+          ) : errorMomentum ? (
+            <SectionError onRetry={loadMomentum} label="momentum" />
+          ) : (
+            <div
+              className="rounded-xl p-5 h-full bg-gradient-to-r from-[#1C2B36] to-[#2A3A47] border-l-4 transition-all"
+              style={{
+                borderLeftColor: momentumConfig.color,
+                borderColor: `${momentumConfig.color}18`,
+                border: `1px solid ${momentumConfig.color}18`,
+                borderLeft: `4px solid ${momentumConfig.color}`,
+                boxShadow: momentumData?.state === 'improving'
+                  ? '0 0 24px rgba(61,213,152,0.04)'
+                  : momentumData?.state === 'declining'
+                  ? '0 0 24px rgba(255,202,58,0.04)'
+                  : 'none',
+              }}
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div
+                    className="w-10 h-10 rounded-xl flex items-center justify-center"
+                    style={{ backgroundColor: `${momentumConfig.color}15` }}
                   >
-                    {momentumConfig.label}
-                  </span>
+                    <momentumConfig.icon className="w-5 h-5" style={{ color: momentumConfig.color }} />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-['Rajdhani'] text-[15px] font-semibold text-[#ECE8E1]">
+                        Performance Momentum
+                      </h3>
+                      <span
+                        className="text-[10px] font-semibold font-['Inter'] px-2 py-0.5 rounded-full"
+                        style={{
+                          backgroundColor: `${momentumConfig.color}15`,
+                          color: momentumConfig.color,
+                        }}
+                      >
+                        {momentumConfig.label}
+                      </span>
+                    </div>
+                    <p className="text-[#9CA8B3] text-sm font-['JetBrains_Mono'] mt-1 font-bold" style={{ color: momentumConfig.color }}>
+                      {momentumData.state === 'insufficient'
+                        ? 'Gathering data...'
+                        : `${momentumData.delta > 0 ? '+' : ''}${momentumData.delta}%`}
+                    </p>
+                  </div>
                 </div>
-                <p className="text-[#9CA8B3] text-sm font-['Inter'] mt-0.5">
-                  {momentumData.state === 'insufficient'
-                    ? `${momentumData.dataPoints} data points — need at least 3 for analysis`
-                    : `${momentumData.delta > 0 ? '+' : ''}${momentumData.delta}% vs previous period`}
-                </p>
-                <div className="mt-2 space-y-0.5">
-                  <p className="text-[#5A6872] text-[11px] font-['Inter']">
-                    {momentumContext.line1}
-                  </p>
-                  <p className="text-[#5A6872] text-[11px] font-['Inter']">
-                    {momentumContext.line2}
-                  </p>
-                </div>
+                {momentumData.sparkline.length > 2 && (
+                  <div className="hidden md:block w-24 h-[40px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={momentumData.sparkline}>
+                        <defs>
+                          <linearGradient id="sparkGrad" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor={momentumConfig.color} stopOpacity={0.3} />
+                            <stop offset="100%" stopColor={momentumConfig.color} stopOpacity={0} />
+                          </linearGradient>
+                        </defs>
+                        <Area type="monotone" dataKey="value" stroke={momentumConfig.color} strokeWidth={2} fill="url(#sparkGrad)" dot={false} />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+                )}
               </div>
+              {momentumData.state !== 'insufficient' && (
+                <div className="mt-3 pt-3 border-t border-white/5 space-y-0.5">
+                  <p className="text-[#5A6872] text-[11px] font-['Inter']">{momentumContext.line1}</p>
+                  <p className="text-[#5A6872] text-[11px] font-['Inter']">{momentumContext.line2}</p>
+                </div>
+              )}
             </div>
-            {momentumData.sparkline.length > 2 && (
-              <div className="hidden md:block w-32 h-[60px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={momentumData.sparkline}>
-                    <defs>
-                      <linearGradient id="sparkGrad" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor={momentumConfig.color} stopOpacity={0.3} />
-                        <stop offset="100%" stopColor={momentumConfig.color} stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <Area
-                      type="monotone"
-                      dataKey="value"
-                      stroke={momentumConfig.color}
-                      strokeWidth={2}
-                      fill="url(#sparkGrad)"
-                      dot={false}
-                    />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
-            )}
-          </div>
+          )}
         </div>
-      )}
 
-      {/* PR Streak Tracker */}
-      <div className="mb-6">
-        <PRStreakTracker prData={prData} />
+        {/* PR Streak Tracker */}
+        <div>
+          <PRStreakTracker prData={prData} />
+        </div>
       </div>
 
       {/* Goal Roadmap */}
@@ -639,6 +638,13 @@ export function Home({ profile, onNavigate, onRefresh, onTriggerCheckin }: HomeP
           onNavigate={onNavigate}
         />
       </div>
+
+      {/* Mental Game Bar */}
+      <MentalGameBar
+        streakDays={profile?.checkin_streak || 0}
+        onCheckin={() => onTriggerCheckin?.()}
+        onNavigate={onNavigate}
+      />
 
       {/* Section 3: Mission Briefing + Battle Stats */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
@@ -682,12 +688,6 @@ export function Home({ profile, onNavigate, onRefresh, onTriggerCheckin }: HomeP
         </div>
       </div>
 
-      {/* Section 4: Mental Game */}
-      <MentalGameBar
-        streakDays={profile?.checkin_streak || 0}
-        onCheckin={() => onTriggerCheckin?.()}
-        onNavigate={onNavigate}
-      />
     </div>
   );
 }

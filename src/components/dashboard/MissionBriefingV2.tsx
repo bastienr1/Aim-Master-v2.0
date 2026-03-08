@@ -166,9 +166,13 @@ export function MissionBriefingV2({
       {/* CTA */}
       <button
         onClick={() => onNavigate('training')}
-        className="mt-4 w-full bg-[#FF4655]/10 border border-[#FF4655]/30 text-[#FF4655] rounded-xl px-4 py-2.5 font-['Inter'] text-[13px] font-semibold hover:bg-[#FF4655]/20 transition-all inline-flex items-center justify-center gap-2"
+        className="mt-4 w-full rounded-xl px-4 py-3 font-['Rajdhani'] text-[15px] font-bold tracking-wide text-white hover:brightness-110 transition-all inline-flex items-center justify-center gap-2"
+        style={{
+          background: 'linear-gradient(135deg, #FF4655, #FF6B75)',
+          boxShadow: '0 4px 24px rgba(255,70,85,0.3)',
+        }}
       >
-        Start Training <ArrowRight className="w-3.5 h-3.5" />
+        Start Training <ArrowRight className="w-4 h-4" />
       </button>
     </div>
   );
