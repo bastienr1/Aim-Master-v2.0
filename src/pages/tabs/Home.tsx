@@ -14,14 +14,16 @@ import { ProfileOnboarding } from '@/components/onboarding/ProfileOnboarding';
 
 // New Battle Stats components
 import { SkillRadar } from '@/components/dashboard/SkillRadar';
-import { MissionBriefing } from '@/components/dashboard/MissionBriefing';
+import { MissionBriefingV2 } from '@/components/dashboard/MissionBriefingV2';
 import { MentalGameBar } from '@/components/dashboard/MentalGameBar';
 import { PRStreakTracker } from '@/components/dashboard/PRStreakTracker';
 import { BenchmarkRadar } from '@/components/dashboard/BenchmarkRadar';
-import { ActiveGoalWidget } from '@/components/dashboard/ActiveGoalWidget';
+import { GoalRoadmap } from '@/components/dashboard/GoalRoadmap';
 import { usePRDetection } from '@/hooks/usePRDetection';
 import { useBenchmarkRadarData, BenchmarkScenarioRow } from '@/hooks/useBenchmarkRadarData';
 import { useGoals } from '@/hooks/useGoals';
+import { useGoalStrategy } from '@/hooks/useGoalStrategy';
+import { getMomentumContext } from '@/utils/momentum-context';
 
 interface HomeProps {
   profile: any;
@@ -334,6 +336,10 @@ export function Home({ profile, onNavigate, onRefresh, onTriggerCheckin }: HomeP
   const coachState = getCoachState();
   const radarResult = useBenchmarkRadarData(benchmarkData);
 
+  // Goal-aware strategy
+  const goalStrategy = useGoalStrategy(primaryGoal, radarResult.axes);
+  const momentumContext = getMomentumContext(momentumData?.state, momentumData?.delta);
+
   const getMomentumConfig = () => {
     if (!momentumData) return { color: '#9CA8B3', icon: Minus, label: 'Loading...' };
     switch (momentumData.state) {
@@ -584,6 +590,14 @@ export function Home({ profile, onNavigate, onRefresh, onTriggerCheckin }: HomeP
                     ? `${momentumData.dataPoints} data points — need at least 3 for analysis`
                     : `${momentumData.delta > 0 ? '+' : ''}${momentumData.delta}% vs previous period`}
                 </p>
+                <div className="mt-2 space-y-0.5">
+                  <p className="text-[#5A6872] text-[11px] font-['Inter']">
+                    {momentumContext.line1}
+                  </p>
+                  <p className="text-[#5A6872] text-[11px] font-['Inter']">
+                    {momentumContext.line2}
+                  </p>
+                </div>
               </div>
             </div>
             {momentumData.sparkline.length > 2 && (
@@ -617,8 +631,14 @@ export function Home({ profile, onNavigate, onRefresh, onTriggerCheckin }: HomeP
         <PRStreakTracker prData={prData} />
       </div>
 
-      {/* Active Goal Widget */}
-      <ActiveGoalWidget onNavigate={onNavigate} />
+      {/* Goal Roadmap */}
+      <div className="mb-6">
+        <GoalRoadmap
+          goal={primaryGoal}
+          strategy={goalStrategy}
+          onNavigate={onNavigate}
+        />
+      </div>
 
       {/* Section 3: Mission Briefing + Battle Stats */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
@@ -629,12 +649,12 @@ export function Home({ profile, onNavigate, onRefresh, onTriggerCheckin }: HomeP
           ) : errorCoach ? (
             <SectionError onRetry={loadCoach} label="coach insights" />
           ) : (
-            <MissionBriefing
+            <MissionBriefingV2
               coachState={coachState}
               coachData={coachData}
               momentumData={momentumData}
               onNavigate={onNavigate}
-              primaryGoal={primaryGoal}
+              goalStrategy={goalStrategy}
             />
           )}
         </div>
