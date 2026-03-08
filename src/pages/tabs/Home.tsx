@@ -545,6 +545,15 @@ export function Home({ profile, onNavigate, onRefresh, onTriggerCheckin }: HomeP
         </button>
       </div>
 
+      {/* Goal Roadmap — Hero position */}
+      <div className="mb-6">
+        <GoalRoadmap
+          goal={primaryGoal}
+          strategy={goalStrategy}
+          onNavigate={onNavigate}
+        />
+      </div>
+
       {/* Section 1: Performance Momentum + PR Streak — side by side */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
         {/* Performance Momentum */}
@@ -628,15 +637,6 @@ export function Home({ profile, onNavigate, onRefresh, onTriggerCheckin }: HomeP
         <div>
           <PRStreakTracker prData={prData} />
         </div>
-      </div>
-
-      {/* Goal Roadmap */}
-      <div className="mb-6">
-        <GoalRoadmap
-          goal={primaryGoal}
-          strategy={goalStrategy}
-          onNavigate={onNavigate}
-        />
       </div>
 
       {/* Mental Game Bar */}
