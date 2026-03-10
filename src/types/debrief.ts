@@ -27,12 +27,19 @@ export interface PRDetection {
   improvementPct: number;
 }
 
+export interface ScenarioNoteSnapshot {
+  scenario_name: string;
+  notes_text: string;
+  completed_at: string | null;
+}
+
 export interface SessionDebrief {
   primaryTheme: string | null;
   secondaryTheme: string | null;
   freeformText: string | null;
   emojiReaction: string | null;
   sessionQuality: number | null;
+  scenarioNotes?: ScenarioNoteSnapshot[];
 }
 
 export interface DebriefInsight {

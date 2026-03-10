@@ -25,6 +25,7 @@ export function useScenarioNotes(
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const saveTimers = useRef<Map<string, NodeJS.Timeout>>(new Map());
+  const pendingNotes = useRef<Map<string, string>>(new Map());
 
   useEffect(() => {
     if (!userId || !programId) return;
@@ -86,6 +87,33 @@ export function useScenarioNotes(
     }
   }, [userId, programId]);
 
+  // Flush pending notes on tab switch, page unload, or component unmount
+  useEffect(() => {
+    const flushAllPending = () => {
+      pendingNotes.current.forEach((text, scenarioName) => {
+        saveNote(scenarioName, text);
+      });
+      pendingNotes.current.clear();
+      saveTimers.current.forEach(timer => clearTimeout(timer));
+      saveTimers.current.clear();
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        flushAllPending();
+      }
+    };
+
+    window.addEventListener('beforeunload', flushAllPending);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener('beforeunload', flushAllPending);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      flushAllPending();
+    };
+  }, [saveNote]);
+
   const updateNote = useCallback((scenarioName: string, text: string) => {
     setNotes(prev => {
       const next = new Map(prev);
@@ -100,9 +128,12 @@ export function useScenarioNotes(
     const existingTimer = saveTimers.current.get(scenarioName);
     if (existingTimer) clearTimeout(existingTimer);
 
+    pendingNotes.current.set(scenarioName, text);
+
     const timer = setTimeout(() => {
       saveNote(scenarioName, text);
       saveTimers.current.delete(scenarioName);
+      pendingNotes.current.delete(scenarioName);
     }, 800);
     saveTimers.current.set(scenarioName, timer);
   }, [saveNote]);

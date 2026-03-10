@@ -1,6 +1,6 @@
 import { supabase } from '../lib/supabase';
 
-const EDGE_FUNCTION = 'Kovaaks-playlists';
+const EDGE_FUNCTION = 'kovaaks-playlists';
 
 export interface PlaylistSearchResult {
   playlistName: string;

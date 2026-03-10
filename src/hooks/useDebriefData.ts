@@ -1,7 +1,7 @@
 import { useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
-import type { GroupedSession, SessionDebrief, DebriefInsight } from '@/types/debrief';
+import type { GroupedSession, SessionDebrief, DebriefInsight, ScenarioNoteSnapshot } from '@/types/debrief';
 import {
   DEBRIEF_MOTIVATIONAL_TIPS,
   INSIGHT_MIN_DEBRIEFS,
@@ -14,6 +14,7 @@ export function useDebriefData() {
   const saveDebrief = useCallback(async (
     session: GroupedSession,
     debrief: SessionDebrief,
+    activeProgramId?: string | null,
   ): Promise<string | null> => {
     if (!user) return null;
 
@@ -28,6 +29,26 @@ export function useDebriefData() {
         .gte('created_at', threeHoursAgo)
         .order('created_at', { ascending: false })
         .limit(1);
+
+      // Snapshot scenario notes from active program (immutable copy)
+      let scenarioNotes: ScenarioNoteSnapshot[] = [];
+      if (activeProgramId) {
+        const { data: notesData } = await supabase
+          .from('program_scenario_completions')
+          .select('scenario_name, notes, completed_at')
+          .eq('program_id', activeProgramId)
+          .eq('user_id', user.id)
+          .not('notes', 'is', null)
+          .neq('notes', '');
+
+        if (notesData) {
+          scenarioNotes = notesData.map((row) => ({
+            scenario_name: row.scenario_name,
+            notes_text: row.notes,
+            completed_at: row.completed_at || null,
+          }));
+        }
+      }
 
       const { data: row, error } = await supabase
         .from('session_debriefs')
@@ -48,6 +69,7 @@ export function useDebriefData() {
           session_quality: debrief.sessionQuality,
           checkin_id: recentCheckin?.[0]?.id || null,
           kovaaks_play_ids: session.plays.map((p) => p.leaderboardId).filter(Boolean),
+          scenario_notes: scenarioNotes,
         })
         .select('id')
         .single();

@@ -12,6 +12,7 @@ interface PostSessionDebriefProps {
   onClose: () => void;
   onComplete: () => void;
   sessionData: GroupedSession | null;
+  activeProgramId?: string | null;
 }
 
 type Screen = 'summary' | 'analysis' | 'rating' | 'goal_checkin' | 'exiting';
@@ -28,6 +29,7 @@ export function PostSessionDebrief({
   onClose,
   onComplete,
   sessionData,
+  activeProgramId,
 }: PostSessionDebriefProps) {
   const { saveDebrief, getDebriefCount } = useDebriefData();
   const { primaryGoal, updateProgress } = useGoals();
@@ -149,14 +151,14 @@ export function PostSessionDebrief({
       // No goal — save and exit
       setSubmitting(true);
       try {
-        await saveDebrief(session, debriefRef.current);
+        await saveDebrief(session, debriefRef.current, activeProgramId);
       } catch (err) {
         console.error('Failed to save debrief:', err);
       }
       setSubmitting(false);
       exitModal(onComplete);
     },
-    [session, submitting, saveDebrief, exitModal, onComplete, primaryGoal, transitionToScreen]
+    [session, submitting, saveDebrief, exitModal, onComplete, primaryGoal, transitionToScreen, activeProgramId]
   );
 
   const handleGoalCheckInComplete = useCallback(
@@ -166,7 +168,7 @@ export function PostSessionDebrief({
 
       try {
         // Save debrief first
-        const debriefId = await saveDebrief(session, debriefRef.current);
+        const debriefId = await saveDebrief(session, debriefRef.current, activeProgramId);
 
         // Update goal progress based on sentiment
         if (primaryGoal) {
@@ -190,13 +192,13 @@ export function PostSessionDebrief({
     if (submitting) return;
     setSubmitting(true);
     try {
-      await saveDebrief(session, debriefRef.current);
+      await saveDebrief(session, debriefRef.current, activeProgramId);
     } catch (err) {
       console.error('Failed to save debrief:', err);
     }
     setSubmitting(false);
     exitModal(onComplete);
-  }, [session, submitting, saveDebrief, exitModal, onComplete]);
+  }, [session, submitting, saveDebrief, exitModal, onComplete, activeProgramId]);
 
   const handleDismiss = useCallback(() => {
     exitModal(onClose);

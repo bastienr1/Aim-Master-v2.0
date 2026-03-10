@@ -22,6 +22,7 @@ import { PostSessionDebrief } from '@/components/post-session/PostSessionDebrief
 import { WelcomeBackModal } from '@/components/post-session/WelcomeBackModal';
 import { usePostSessionGate } from '@/hooks/usePostSessionGate';
 import { useSessionDetection } from '@/hooks/useSessionDetection';
+import { PlaylistService } from '@/services/PlaylistService';
 import type { GroupedSession } from '@/types/debrief';
 
 type Tab = 'home' | 'training' | 'mental' | 'stats' | 'coach' | 'goals' | 'sessions' | 'profile';
@@ -44,6 +45,13 @@ export default function Dashboard() {
   });
   const [profile, setProfile] = useState<any>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  // Active program ID for debrief scenario notes snapshot
+  const [activeProgramId, setActiveProgramId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!user) return;
+    PlaylistService.getActiveProgram(user.id).then((p) => setActiveProgramId(p?.id ?? null));
+  }, [user]);
 
   // Manual check-in gate (no auto-trigger — that's handled inside Training)
   const { showCheckin, triggerCheckin, dismissCheckin, completeCheckin } = usePreTrainingGate(false);
@@ -217,6 +225,7 @@ export default function Dashboard() {
           clearSession();
         }}
         sessionData={sessionData}
+        activeProgramId={activeProgramId}
       />
 
       {/* Mobile header */}
