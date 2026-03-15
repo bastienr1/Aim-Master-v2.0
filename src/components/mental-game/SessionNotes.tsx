@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Brain } from 'lucide-react';
-import { useSessionNotes, SessionNote } from '../../hooks/useSessionNotes';
+import { useSessionNotes, SessionNote, ScenarioNoteEntry } from '../../hooks/useSessionNotes';
 
 function getBorderColor(quality: number | null): string {
   if (quality === null) return '#5A6872';
@@ -53,6 +53,7 @@ function SessionNoteCard({ note }: { note: SessionNote }) {
   const freeformText = note.freeform_text?.trim() || '';
   const isLong = freeformText.length > 120;
   const displayText = expanded || !isLong ? freeformText : freeformText.slice(0, 120) + '...';
+  const scenarioNotes: ScenarioNoteEntry[] = Array.isArray(note.scenario_notes) ? note.scenario_notes.filter(sn => sn.notes_text?.trim()) : [];
 
   // Build meta items
   const metaItems: string[] = [date];
@@ -128,6 +129,30 @@ function SessionNoteCard({ note }: { note: SessionNote }) {
               {expanded ? 'show less' : 'show more'}
             </button>
           )}
+        </div>
+      )}
+
+      {/* Line 5 — Scenario card notes snapshot */}
+      {scenarioNotes.length > 0 && (
+        <div className="mt-3 pt-3 border-t border-[#2A3A47]">
+          <span className="font-['Inter'] text-[10px] uppercase tracking-wider text-[#5A6872] mb-2 block">
+            Scenario Notes
+          </span>
+          <div className="space-y-1.5">
+            {scenarioNotes.map((sn, i) => (
+              <div key={i} className="flex gap-2 items-start">
+                <span className="font-['JetBrains_Mono'] text-[11px] text-[#53CADC] shrink-0 mt-0.5">›</span>
+                <div className="min-w-0">
+                  <span className="font-['Inter'] text-[11px] text-[#9CA8B3] font-medium block truncate">
+                    {sn.scenario_name}
+                  </span>
+                  <span className="font-['Inter'] text-[12px] text-[#ECE8E1]/80 block leading-snug">
+                    {sn.notes_text}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>

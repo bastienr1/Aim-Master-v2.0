@@ -1,6 +1,12 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 
+export interface ScenarioNoteEntry {
+  scenario_name: string;
+  notes_text: string;
+  completed_at: string | null;
+}
+
 export interface SessionNote {
   id: string;
   created_at: string;
@@ -13,6 +19,7 @@ export interface SessionNote {
   categories: Record<string, number>;
   duration_seconds: number | null;
   scenario_count: number | null;
+  scenario_notes: ScenarioNoteEntry[] | null;
 }
 
 export function useSessionNotes(limit: number = 5) {
@@ -35,7 +42,7 @@ export function useSessionNotes(limit: number = 5) {
       // Fetch most recent notes
       const { data, error } = await supabase
         .from('session_debriefs')
-        .select('id, created_at, primary_theme, secondary_theme, freeform_text, emoji_reaction, session_quality, prs_detected, categories, duration_seconds, scenario_count')
+        .select('id, created_at, primary_theme, secondary_theme, freeform_text, emoji_reaction, session_quality, prs_detected, categories, duration_seconds, scenario_count, scenario_notes')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false })
         .limit(limit);
