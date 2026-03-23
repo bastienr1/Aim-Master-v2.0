@@ -11,6 +11,10 @@ import { PatternsPlaceholder } from '@/components/mental-game/PatternsPlaceholde
 import { QuickTipCard } from '@/components/mental-game/QuickTipCard';
 import { EmptyState } from '@/components/mental-game/EmptyState';
 import { CheckinButton } from '@/components/dashboard/CheckinButton';
+import { useWeeklyRecap } from '@/hooks/useWeeklyRecap';
+import { PinnedRecapCard, GenerateRecapPrompt } from '@/components/mental-game/PinnedRecapCard';
+import { WeeklyRecapFull } from '@/components/mental-game/WeeklyRecapFull';
+import { getISOWeekNumber } from '@/lib/weekBounds';
 
 interface MentalGameProps {
   onTriggerCheckin: () => void;
@@ -26,6 +30,17 @@ export function MentalGame({ onTriggerCheckin }: MentalGameProps) {
   const [loading, setLoading] = useState(true);
   const [isEmpty, setIsEmpty] = useState(false);
   const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
+  const [showFullRecap, setShowFullRecap] = useState(false);
+  const {
+    pinnedRecap,
+    isDismissed,
+    needsGeneration,
+    isGenerating,
+    loading: recapLoading,
+    dismissRecap,
+    showRecap,
+    generateRecap,
+  } = useWeeklyRecap();
   const { sessions: unifiedSessions, loading: unifiedLoading, totalCount: unifiedTotalCount } = useUnifiedSessions(20);
 
   const computeStreak = useCallback((rows: CheckinRow[]): number => {
@@ -155,6 +170,15 @@ export function MentalGame({ onTriggerCheckin }: MentalGameProps) {
     );
   }
 
+  // Full Recap View
+  if (showFullRecap && pinnedRecap) {
+    return (
+      <div className="p-6 lg:p-8 max-w-5xl mx-auto">
+        <WeeklyRecapFull recap={pinnedRecap} onBack={() => setShowFullRecap(false)} />
+      </div>
+    );
+  }
+
   return (
     <div className="p-6 lg:p-8 max-w-5xl mx-auto">
       {/* Header */}
@@ -175,8 +199,33 @@ export function MentalGame({ onTriggerCheckin }: MentalGameProps) {
         <CheckinButton onClick={onTriggerCheckin} />
       </div>
 
-      {/* Section 1 — Summary Cards */}
+      {/* Section 0 — Pinned Weekly Recap */}
+      {!recapLoading && pinnedRecap && (
+        <section className="mb-6">
+          <PinnedRecapCard
+            recap={pinnedRecap}
+            isDismissed={isDismissed}
+            onDismiss={dismissRecap}
+            onShow={showRecap}
+            onViewFull={() => setShowFullRecap(true)}
+          />
+        </section>
+      )}
+      {!recapLoading && !pinnedRecap && needsGeneration && (
+        <section className="mb-6">
+          <GenerateRecapPrompt
+            weekNumber={getISOWeekNumber(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())}
+            onGenerate={() => generateRecap()}
+            isGenerating={isGenerating}
+          />
+        </section>
+      )}
+
+      {/* Section 1 — This Week's Stats */}
       <section className="mb-8">
+        <div className="flex items-baseline gap-2 mb-3">
+          <span className="font-['Rajdhani'] text-[12px] font-semibold uppercase tracking-[1.8px] text-[#53CADC]">This Week</span>
+        </div>
         <SummaryCards
           totalCheckins={totalCheckins}
           streak={streak}
