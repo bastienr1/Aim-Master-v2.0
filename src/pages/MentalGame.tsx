@@ -1,10 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Brain, List, CalendarDays } from 'lucide-react';
-import { useCheckinData, type CheckinRow } from '@/hooks/useCheckinData';
+import { useCheckinData } from '@/hooks/useCheckinData';
 import { useAuth } from '@/contexts/AuthContext';
-import { supabase } from '@/lib/supabase';
 import { useUnifiedSessions } from '@/hooks/useUnifiedSessions';
-import { SummaryCards } from '@/components/mental-game/SummaryCards';
 import { UnifiedSessionCard } from '@/components/mental-game/UnifiedSessionCard';
 import { SessionCalendarView } from '@/components/mental-game/SessionCalendarView';
 import { PatternsPlaceholder } from '@/components/mental-game/PatternsPlaceholder';
@@ -22,11 +20,8 @@ interface MentalGameProps {
 
 export function MentalGame({ onTriggerCheckin }: MentalGameProps) {
   const { user } = useAuth();
-  const { getCheckinCount, getCheckinHistory } = useCheckinData();
+  const { getCheckinCount } = useCheckinData();
 
-  const [totalCheckins, setTotalCheckins] = useState(0);
-  const [streak, setStreak] = useState(0);
-  const [avgReadiness, setAvgReadiness] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [isEmpty, setIsEmpty] = useState(false);
   const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
@@ -43,70 +38,6 @@ export function MentalGame({ onTriggerCheckin }: MentalGameProps) {
   } = useWeeklyRecap();
   const { sessions: unifiedSessions, loading: unifiedLoading, totalCount: unifiedTotalCount } = useUnifiedSessions(20);
 
-  const computeStreak = useCallback((rows: CheckinRow[]): number => {
-    const dates = new Set<string>();
-    for (const row of rows) {
-      if (!row.skipped) {
-        const d = new Date(row.created_at);
-        dates.add(
-          `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-        );
-      }
-    }
-
-    if (dates.size === 0) return 0;
-
-    const sorted = Array.from(dates).sort().reverse();
-    const today = new Date();
-    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
-    const yesterdayStr = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, '0')}-${String(yesterday.getDate()).padStart(2, '0')}`;
-
-    const mostRecent = sorted[0];
-    if (mostRecent !== todayStr && mostRecent !== yesterdayStr) return 0;
-
-    let streakCount = 0;
-    let checkDate = new Date(today);
-
-    for (let i = 0; i < 365; i++) {
-      const dateStr = `${checkDate.getFullYear()}-${String(checkDate.getMonth() + 1).padStart(2, '0')}-${String(checkDate.getDate()).padStart(2, '0')}`;
-      if (dates.has(dateStr)) {
-        streakCount++;
-        checkDate.setDate(checkDate.getDate() - 1);
-      } else if (i === 0) {
-        checkDate.setDate(checkDate.getDate() - 1);
-        continue;
-      } else {
-        break;
-      }
-    }
-
-    return streakCount;
-  }, []);
-
-  const computeAvgReadiness = useCallback((rows: CheckinRow[]): number | null => {
-    const valid = rows.filter((r) => !r.skipped);
-    if (valid.length === 0) return null;
-
-    let sum = 0;
-    let count = 0;
-
-    for (const row of valid) {
-      const levels = [row.energy_level, row.focus_level, row.mood_level].filter(
-        (v): v is number => v !== null
-      );
-      if (levels.length > 0) {
-        const avg = levels.reduce((a, b) => a + b, 0) / levels.length;
-        sum += avg;
-        count++;
-      }
-    }
-
-    return count > 0 ? sum / count : null;
-  }, []);
-
   const loadData = useCallback(async () => {
     if (!user) {
       setLoading(false);
@@ -116,29 +47,14 @@ export function MentalGame({ onTriggerCheckin }: MentalGameProps) {
     setLoading(true);
 
     try {
-      const [count, history] = await Promise.all([
-        getCheckinCount(),
-        getCheckinHistory(20),
-      ]);
-
-      const { data: allRows } = await supabase
-        .from('mental_checkins')
-        .select('created_at, skipped')
-        .eq('user_id', user.id)
-        .eq('skipped', false)
-        .order('created_at', { ascending: false })
-        .limit(365);
-
-      setTotalCheckins(count);
-      setStreak(computeStreak((allRows ?? []) as CheckinRow[]));
-      setAvgReadiness(computeAvgReadiness(history));
-      setIsEmpty(count === 0 && history.length === 0);
+      const count = await getCheckinCount();
+      setIsEmpty(count === 0);
     } catch (err) {
       console.error('MentalGame loadData error:', err);
     } finally {
       setLoading(false);
     }
-  }, [user, getCheckinCount, getCheckinHistory, computeStreak, computeAvgReadiness]);
+  }, [user, getCheckinCount]);
 
   useEffect(() => {
     loadData();
@@ -221,19 +137,6 @@ export function MentalGame({ onTriggerCheckin }: MentalGameProps) {
         </section>
       )}
 
-      {/* Section 1 — This Week's Stats */}
-      <section className="mb-8">
-        <div className="flex items-baseline gap-2 mb-3">
-          <span className="font-['Rajdhani'] text-[12px] font-semibold uppercase tracking-[1.8px] text-[#53CADC]">This Week</span>
-        </div>
-        <SummaryCards
-          totalCheckins={totalCheckins}
-          streak={streak}
-          avgReadiness={avgReadiness}
-          loading={loading}
-        />
-      </section>
-
       {/* Section 2 — Unified Session History */}
       <section className="mb-8">
         <div className="flex items-center justify-between mb-4">
@@ -295,7 +198,7 @@ export function MentalGame({ onTriggerCheckin }: MentalGameProps) {
 
       {/* Section 3 — Patterns Placeholder */}
       <section className="mb-8">
-        <PatternsPlaceholder totalCheckins={totalCheckins} loading={loading} />
+        <PatternsPlaceholder totalCheckins={0} loading={loading} />
       </section>
 
       {/* Section 4 — Quick Tips */}
