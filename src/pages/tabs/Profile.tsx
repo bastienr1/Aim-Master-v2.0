@@ -7,6 +7,7 @@ import {
   Snowflake, Gamepad2, Save, Loader2, Settings
 } from 'lucide-react';
 import { KovaaksConnectCard } from '@/components/KovaaksConnectCard';
+import { useTimezone } from '@/hooks/useTimezone';
 
 interface ProfileProps {
   profile: any;
@@ -16,6 +17,7 @@ interface ProfileProps {
 export function Profile({ profile, onRefresh }: ProfileProps) {
   const { user } = useAuth();
 
+  const { timezone, updateTimezone } = useTimezone();
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
@@ -271,7 +273,7 @@ export function Profile({ profile, onRefresh }: ProfileProps) {
           </button>
         </div>
 
-        {/* ─── Preferences placeholder ─── */}
+        {/* ─── Preferences ─── */}
         <div className="bg-[#2A3A47] border border-white/10 rounded-xl p-6">
           <h3 className="font-['Rajdhani'] text-lg font-semibold text-[#ECE8E1] mb-4 flex items-center gap-2">
             <Settings className="w-5 h-5 text-[#FFCA3A]" />
@@ -280,6 +282,25 @@ export function Profile({ profile, onRefresh }: ProfileProps) {
           <p className="text-[#5A6872] text-sm font-['Inter']">
             Notification settings, theme preferences, and more coming soon.
           </p>
+
+          {/* Timezone */}
+          <div className="bg-[#1C2B36] rounded-lg p-4 border border-white/[0.06] mt-4">
+            <label className="font-['Rajdhani'] text-[13px] font-semibold text-[#ECE8E1] uppercase tracking-wider block mb-2">
+              Timezone
+            </label>
+            <select
+              value={timezone}
+              onChange={(e) => updateTimezone(e.target.value)}
+              className="w-full bg-[#0F1923] border border-white/[0.08] rounded-lg px-3 py-2 text-[13px] font-['Inter'] text-[#ECE8E1] focus:border-[#53CADC]/40 focus:outline-none"
+            >
+              {((Intl as any).supportedValuesOf('timeZone') as string[]).map((tz: string) => (
+                <option key={tz} value={tz}>{tz.replace(/_/g, ' ')}</option>
+              ))}
+            </select>
+            <p className="text-[11px] text-[#5A6872] mt-1.5 font-['Inter']">
+              Used for weekly recaps and training week boundaries.
+            </p>
+          </div>
         </div>
       </div>
     </div>
