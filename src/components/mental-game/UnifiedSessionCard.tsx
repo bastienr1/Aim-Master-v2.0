@@ -119,9 +119,6 @@ export function UnifiedSessionCard({ session, defaultOpen = false }: Props) {
             </div>
           )}
 
-          {session.checkin_skipped && (
-            <div className="px-3 py-1.5 mb-2.5 bg-white/[0.015] border border-white/[0.03] rounded-lg font-['JetBrains_Mono'] text-[10px] text-[#5A6872]">Check-in skipped</div>
-          )}
 
           {!hasCheckin && !session.checkin_skipped && session.debrief_id && (
             <div className="px-3 py-1.5 mb-2.5 bg-white/[0.015] border border-white/[0.03] rounded-lg font-['JetBrains_Mono'] text-[10px] text-[#5A6872]">No check-in recorded</div>

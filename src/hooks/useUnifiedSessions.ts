@@ -135,8 +135,13 @@ export function useUnifiedSessions(limit: number = 20) {
         }
       }
 
-      unified.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-      setSessions(unified.slice(0, limit));
+      const filtered = unified.filter(s => {
+        if (s.type === 'checkin_only' && s.checkin_skipped) return false;
+        return true;
+      });
+
+      filtered.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      setSessions(filtered.slice(0, limit));
 
       const { count } = await supabase
         .from('session_debriefs')
