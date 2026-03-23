@@ -1,12 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Brain } from 'lucide-react';
+import { Brain, List, CalendarDays } from 'lucide-react';
 import { useCheckinData, type CheckinRow } from '@/hooks/useCheckinData';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { useUnifiedSessions } from '@/hooks/useUnifiedSessions';
 import { SummaryCards } from '@/components/mental-game/SummaryCards';
-import { HistoryTimeline } from '@/components/mental-game/HistoryTimeline';
+import { UnifiedSessionCard } from '@/components/mental-game/UnifiedSessionCard';
+import { SessionCalendarView } from '@/components/mental-game/SessionCalendarView';
 import { PatternsPlaceholder } from '@/components/mental-game/PatternsPlaceholder';
-import { SessionNotes } from '@/components/mental-game/SessionNotes';
 import { QuickTipCard } from '@/components/mental-game/QuickTipCard';
 import { EmptyState } from '@/components/mental-game/EmptyState';
 import { CheckinButton } from '@/components/dashboard/CheckinButton';
@@ -15,8 +16,6 @@ interface MentalGameProps {
   onTriggerCheckin: () => void;
 }
 
-const PAGE_SIZE = 5;
-
 export function MentalGame({ onTriggerCheckin }: MentalGameProps) {
   const { user } = useAuth();
   const { getCheckinCount, getCheckinHistory } = useCheckinData();
@@ -24,10 +23,10 @@ export function MentalGame({ onTriggerCheckin }: MentalGameProps) {
   const [totalCheckins, setTotalCheckins] = useState(0);
   const [streak, setStreak] = useState(0);
   const [avgReadiness, setAvgReadiness] = useState<number | null>(null);
-  const [checkins, setCheckins] = useState<CheckinRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [isEmpty, setIsEmpty] = useState(false);
-  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
+  const { sessions: unifiedSessions, loading: unifiedLoading, totalCount: unifiedTotalCount } = useUnifiedSessions(20);
 
   const computeStreak = useCallback((rows: CheckinRow[]): number => {
     const dates = new Set<string>();
@@ -116,11 +115,9 @@ export function MentalGame({ onTriggerCheckin }: MentalGameProps) {
         .limit(365);
 
       setTotalCheckins(count);
-      setCheckins(history);
       setStreak(computeStreak((allRows ?? []) as CheckinRow[]));
       setAvgReadiness(computeAvgReadiness(history));
       setIsEmpty(count === 0 && history.length === 0);
-      setVisibleCount(PAGE_SIZE);
     } catch (err) {
       console.error('MentalGame loadData error:', err);
     } finally {
@@ -131,10 +128,6 @@ export function MentalGame({ onTriggerCheckin }: MentalGameProps) {
   useEffect(() => {
     loadData();
   }, [loadData]);
-
-  const handleShowMore = useCallback(() => {
-    setVisibleCount((prev) => Math.min(prev + PAGE_SIZE, checkins.length));
-  }, [checkins.length]);
 
   // Show empty state for first-time users
   if (!loading && isEmpty) {
@@ -161,9 +154,6 @@ export function MentalGame({ onTriggerCheckin }: MentalGameProps) {
       </div>
     );
   }
-
-  const visibleCheckins = checkins.slice(0, visibleCount);
-  const hasMore = visibleCount < checkins.length;
 
   return (
     <div className="p-6 lg:p-8 max-w-5xl mx-auto">
@@ -195,34 +185,63 @@ export function MentalGame({ onTriggerCheckin }: MentalGameProps) {
         />
       </section>
 
-      {/* Section 2 — History Timeline */}
+      {/* Section 2 — Unified Session History */}
       <section className="mb-8">
-        <div className="flex items-baseline justify-between mb-4">
+        <div className="flex items-center justify-between mb-4">
           <h2 className="font-['Rajdhani'] text-lg font-semibold text-[#ECE8E1]">
-            Check-in History
+            Session History
           </h2>
-          {!loading && checkins.length > 0 && (
-            <span className="text-[12px] font-['Inter'] text-[#5A6872]">
-              Showing {visibleCheckins.length} of {checkins.length} check-ins
-            </span>
-          )}
-        </div>
-        <HistoryTimeline checkins={visibleCheckins} loading={loading} />
-        {!loading && hasMore && (
-          <div className="flex justify-center mt-3">
+          <div className="flex gap-1 bg-white/[0.03] rounded-lg p-0.5 border border-white/[0.06]">
             <button
-              onClick={handleShowMore}
-              className="text-[13px] font-['Inter'] text-[#53CADC] bg-transparent border-none cursor-pointer py-1.5 px-1 hover:underline transition-all duration-150 focus:outline-none focus-visible:ring-1 focus-visible:ring-[#53CADC]/50 rounded"
+              onClick={() => setViewMode('list')}
+              className={`font-['Rajdhani'] text-[12px] font-semibold uppercase tracking-wider px-3 py-1.5 rounded-md border-none cursor-pointer flex items-center gap-1.5 transition-all ${viewMode === 'list' ? 'bg-[#53CADC]/12 text-[#53CADC]' : 'bg-transparent text-[#5A6872] hover:text-[#9CA8B3]'}`}
             >
-              Show more
+              <List className="w-3 h-3" />
+              List
+            </button>
+            <button
+              onClick={() => setViewMode('calendar')}
+              className={`font-['Rajdhani'] text-[12px] font-semibold uppercase tracking-wider px-3 py-1.5 rounded-md border-none cursor-pointer flex items-center gap-1.5 transition-all ${viewMode === 'calendar' ? 'bg-[#53CADC]/12 text-[#53CADC]' : 'bg-transparent text-[#5A6872] hover:text-[#9CA8B3]'}`}
+            >
+              <CalendarDays className="w-3 h-3" />
+              Calendar
             </button>
           </div>
-        )}
-      </section>
+        </div>
 
-      {/* Section 2.5 — Session Notes */}
-      <section className="mb-8">
-        <SessionNotes />
+        {viewMode === 'list' ? (
+          <>
+            {unifiedLoading ? (
+              <div className="space-y-2">
+                {[0, 1, 2].map(i => (
+                  <div key={i} className="bg-[#111B24] rounded-[14px] p-4 animate-pulse border border-white/[0.06]">
+                    <div className="flex items-center gap-4">
+                      <div className="w-28 h-3 rounded bg-white/5" />
+                      <div className="flex gap-2"><div className="w-6 h-6 rounded-full bg-white/5" /><div className="w-6 h-6 rounded-full bg-white/5" /><div className="w-6 h-6 rounded-full bg-white/5" /></div>
+                      <div className="ml-auto w-16 h-4 rounded bg-white/5" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : unifiedSessions.length === 0 ? (
+              <div className="bg-[#111B24] rounded-xl p-8 text-center border border-white/[0.06]">
+                <p className="text-[#5A6872] font-['Inter'] text-sm">No sessions yet. Complete a training session to see your history here.</p>
+              </div>
+            ) : (
+              <>
+                <div className="flex items-baseline justify-between mb-2">
+                  <span className="font-['Rajdhani'] text-[12px] font-semibold uppercase tracking-[1.8px] text-[#53CADC]">Session History</span>
+                  <span className="font-['JetBrains_Mono'] text-[10px] text-[#5A6872]">Showing {unifiedSessions.length} of {unifiedTotalCount}</span>
+                </div>
+                {unifiedSessions.map((session, idx) => (
+                  <UnifiedSessionCard key={session.id} session={session} defaultOpen={idx === 0} />
+                ))}
+              </>
+            )}
+          </>
+        ) : (
+          <SessionCalendarView sessions={unifiedSessions} />
+        )}
       </section>
 
       {/* Section 3 — Patterns Placeholder */}
