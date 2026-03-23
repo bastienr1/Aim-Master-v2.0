@@ -31,7 +31,10 @@ export function PinnedRecapCard({ recap, isDismissed, onDismiss, onShow, onViewF
   const weekRange = formatWeekRange(recap.week_start, recap.week_end);
   const durationMin = Math.round((recap.total_duration_seconds || 0) / 60);
   const maxNotes = 3;
-  const displayNotes = (recap.session_notes || []).slice(0, maxNotes);
+  const scenarioNotes = recap.scenario_notes_collection || [];
+  const freeformNotes = recap.session_notes || [];
+  // Scenario notes take priority — they're the rich technique insights
+  const hasScenarioNotes = scenarioNotes.length > 0;
 
   // Top themes sorted by frequency
   const themeEntries = Object.entries(recap.theme_frequency || {})
@@ -93,8 +96,31 @@ export function PinnedRecapCard({ recap, isDismissed, onDismiss, onShow, onViewF
         )}
       </div>
 
-      {/* Technique Notes */}
-      {displayNotes.length > 0 && (
+      {/* Scenario Technique Notes (priority) */}
+      {hasScenarioNotes && (
+        <div className="mb-4">
+          <div className="flex items-center gap-1.5 mb-2">
+            <FileText className="w-3 h-3 text-[#5A6872]" />
+            <span className="font-['Inter'] text-[10px] font-semibold uppercase tracking-[1.5px] text-[#5A6872]">
+              Scenario Notes
+            </span>
+          </div>
+          <div className="space-y-2">
+            {scenarioNotes.slice(0, maxNotes).map((note, i) => (
+              <div key={i} className="pl-3 border-l-2 border-[#53CADC]/20">
+                <p className="font-['JetBrains_Mono'] text-[10px] text-[#53CADC] mb-0.5">{note.scenario_name}</p>
+                <p className="font-['Inter'] text-[12px] text-[#9CA8B3] leading-relaxed">{note.notes_text}</p>
+              </div>
+            ))}
+            {scenarioNotes.length > maxNotes && (
+              <p className="font-['Inter'] text-[10px] text-[#5A6872]">+{scenarioNotes.length - maxNotes} more in full recap</p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Freeform Reflection Notes (secondary) */}
+      {!hasScenarioNotes && freeformNotes.length > 0 && (
         <div className="mb-4">
           <div className="flex items-center gap-1.5 mb-2">
             <FileText className="w-3 h-3 text-[#5A6872]" />
@@ -103,7 +129,7 @@ export function PinnedRecapCard({ recap, isDismissed, onDismiss, onShow, onViewF
             </span>
           </div>
           <div className="space-y-1.5">
-            {displayNotes.map((note, i) => (
+            {freeformNotes.slice(0, maxNotes).map((note, i) => (
               <p key={i} className="font-['Inter'] text-[12px] text-[#9CA8B3] leading-relaxed pl-3 border-l-2 border-white/[0.06]">
                 "{note.text}"
               </p>

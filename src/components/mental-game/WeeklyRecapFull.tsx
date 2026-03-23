@@ -155,6 +155,29 @@ export function WeeklyRecapFull({ recap, onBack }: WeeklyRecapFullProps) {
         </div>
       )}
 
+      {/* Scenario Notes */}
+      {(recap.scenario_notes_collection || []).length > 0 && (
+        <div className="bg-[#1C2B36] rounded-xl p-5 border border-white/[0.06]">
+          <h3 className="font-['Rajdhani'] text-[14px] font-semibold uppercase tracking-wider text-[#53CADC] mb-3 flex items-center gap-2">
+            <Target className="w-4 h-4" />
+            Scenario Notes
+          </h3>
+          <div className="space-y-3">
+            {(recap.scenario_notes_collection || []).map((note, i) => (
+              <div key={i} className="pl-3 border-l-2 border-[#53CADC]/20">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="font-['JetBrains_Mono'] text-[11px] font-medium text-[#53CADC]">{note.scenario_name}</span>
+                  <span className="font-['JetBrains_Mono'] text-[9px] text-[#5A6872]">
+                    {new Date(note.session_date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                  </span>
+                </div>
+                <p className="font-['Inter'] text-[13px] text-[#ECE8E1] leading-relaxed">{note.notes_text}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Intent + Emoji Row */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {intentEntries.length > 0 && (

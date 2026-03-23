@@ -30,6 +30,7 @@ export interface WeeklyRecap {
   intent_distribution: Record<string, number>;
   categories_trained: Record<string, number>;
   session_notes: Array<{ date: string; text: string; theme?: string; quality?: number; emoji?: string }>;
+  scenario_notes_collection: Array<{ session_date: string; scenario_name: string; notes_text: string }>;
   summary_text: string | null;
   highlight: string | null;
   focus_area: string | null;
