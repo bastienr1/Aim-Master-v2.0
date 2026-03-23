@@ -1,7 +1,9 @@
 // src/hooks/useWeeklyRecap.ts
+// Training week = Mon–Fri | Saturday = recap generation | Sunday = goal setting
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
+import { getLastTrainingWeekMonday } from '@/lib/weekBounds';
 
 export interface WeeklyRecap {
   id: string;
@@ -53,22 +55,14 @@ export function useWeeklyRecap() {
     if (!user) { setLoading(false); return; }
 
     try {
-      // Current week's Monday
-      const now = new Date();
-      const day = now.getDay();
-      const diffToMonday = day === 0 ? -6 : 1 - day;
-      const currentWeekStart = new Date(now);
-      currentWeekStart.setDate(now.getDate() + diffToMonday);
-      currentWeekStart.setHours(0, 0, 0, 0);
-      const currentWeekStartStr = currentWeekStart.toISOString().split('T')[0];
+      const { dateStr: lastWeekMondayStr, date: lastWeekMonday } = getLastTrainingWeekMonday();
 
-      // Fetch most recent recap where week_start < current week start
+      // Only pin a recap that matches the LAST TRAINING WEEK specifically
       const { data } = await supabase
         .from('weekly_recaps')
         .select('*')
         .eq('user_id', user.id)
-        .lt('week_start', currentWeekStartStr)
-        .order('week_start', { ascending: false })
+        .eq('week_start', lastWeekMondayStr)
         .limit(1);
 
       if (data?.length) {
@@ -79,19 +73,30 @@ export function useWeeklyRecap() {
         setIsDismissed(localStorage.getItem(dismissKey) === 'true');
         setNeedsGeneration(false);
       } else {
+        // No recap for last training week — check if there's Mon-Fri data
         setPinnedRecap(null);
-        // Check if there's data from last week that needs a recap
-        const lastWeekStart = new Date(currentWeekStart);
-        lastWeekStart.setDate(lastWeekStart.getDate() - 7);
 
-        const { count } = await supabase
-          .from('session_debriefs')
-          .select('id', { count: 'exact', head: true })
-          .eq('user_id', user.id)
-          .gte('created_at', lastWeekStart.toISOString())
-          .lt('created_at', currentWeekStart.toISOString());
+        // Training data window: Monday 00:00 → Saturday 00:00 (exclusive, captures all of Fri)
+        const lastWeekSaturday = new Date(lastWeekMonday);
+        lastWeekSaturday.setDate(lastWeekMonday.getDate() + 5); // Mon + 5 = Sat
 
-        setNeedsGeneration((count || 0) > 0);
+        const [{ count: debriefCount }, { count: checkinCount }] = await Promise.all([
+          supabase
+            .from('session_debriefs')
+            .select('id', { count: 'exact', head: true })
+            .eq('user_id', user.id)
+            .gte('created_at', lastWeekMonday.toISOString())
+            .lt('created_at', lastWeekSaturday.toISOString()),
+          supabase
+            .from('mental_checkins')
+            .select('id', { count: 'exact', head: true })
+            .eq('user_id', user.id)
+            .eq('skipped', false)
+            .gte('created_at', lastWeekMonday.toISOString())
+            .lt('created_at', lastWeekSaturday.toISOString()),
+        ]);
+
+        setNeedsGeneration(((debriefCount || 0) + (checkinCount || 0)) > 0);
       }
     } catch (err) {
       console.error('fetchPinnedRecap error:', err);
