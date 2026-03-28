@@ -65,7 +65,7 @@ export function WeeklyRecapFull({ recap, onBack }: WeeklyRecapFullProps) {
 
       {/* Stats Grid */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <StatCard icon={<Flame className="w-4 h-4" />} label="Days Trained" value={`${recap.days_trained}/7`} color="#FF4655" />
+        <StatCard icon={<Flame className="w-4 h-4" />} label="Days Trained" value={`${recap.days_trained}/5`} color="#FF4655" />
         <StatCard icon={<Target className="w-4 h-4" />} label="Sessions" value={String(recap.total_sessions)} color="#53CADC" />
         <StatCard icon={<Clock className="w-4 h-4" />} label="Minutes" value={String(durationMin)} color="#FFCA3A" />
         <StatCard icon={<Trophy className="w-4 h-4" />} label="PRs" value={String(recap.prs_this_week)} color="#3DD598" />
@@ -155,28 +155,48 @@ export function WeeklyRecapFull({ recap, onBack }: WeeklyRecapFullProps) {
         </div>
       )}
 
-      {/* Scenario Notes */}
-      {(recap.scenario_notes_collection || []).length > 0 && (
-        <div className="bg-[#1C2B36] rounded-xl p-5 border border-white/[0.06]">
-          <h3 className="font-['Rajdhani'] text-[14px] font-semibold uppercase tracking-wider text-[#53CADC] mb-3 flex items-center gap-2">
-            <Target className="w-4 h-4" />
-            Scenario Notes
-          </h3>
-          <div className="space-y-3">
-            {(recap.scenario_notes_collection || []).map((note, i) => (
-              <div key={i} className="pl-3 border-l-2 border-[#53CADC]/20">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="font-['JetBrains_Mono'] text-[11px] font-medium text-[#53CADC]">{note.scenario_name}</span>
-                  <span className="font-['JetBrains_Mono'] text-[9px] text-[#5A6872]">
-                    {new Date(note.session_date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
-                  </span>
+      {/* Scenario Notes — grouped by scenario, chronological entries */}
+      {(recap.scenario_notes_collection || []).length > 0 && (() => {
+        // Group notes by scenario_name, preserving chronological order
+        const grouped = new Map<string, Array<{ session_date: string; notes_text: string }>>();
+        for (const note of recap.scenario_notes_collection) {
+          if (!grouped.has(note.scenario_name)) {
+            grouped.set(note.scenario_name, []);
+          }
+          const entries = grouped.get(note.scenario_name)!;
+          // Deduplicate: skip if the same note text already exists for this scenario
+          const isDuplicate = entries.some(e => e.notes_text === note.notes_text);
+          if (!isDuplicate) {
+            entries.push({ session_date: note.session_date, notes_text: note.notes_text });
+          }
+        }
+
+        return (
+          <div className="bg-[#1C2B36] rounded-xl p-5 border border-white/[0.06]">
+            <h3 className="font-['Rajdhani'] text-[14px] font-semibold uppercase tracking-wider text-[#53CADC] mb-3 flex items-center gap-2">
+              <Target className="w-4 h-4" />
+              Scenario Notes
+            </h3>
+            <div className="space-y-4">
+              {Array.from(grouped.entries()).map(([scenarioName, entries]) => (
+                <div key={scenarioName} className="pl-3 border-l-2 border-[#53CADC]/20">
+                  <p className="font-['JetBrains_Mono'] text-[11px] font-medium text-[#53CADC] mb-2">{scenarioName}</p>
+                  <div className="space-y-2">
+                    {entries.map((entry, i) => (
+                      <div key={i} className="flex gap-2">
+                        <span className="font-['JetBrains_Mono'] text-[10px] text-[#5A6872] shrink-0 pt-0.5 w-20">
+                          {new Date(entry.session_date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', day: 'numeric' })}
+                        </span>
+                        <p className="font-['Inter'] text-[12px] text-[#ECE8E1] leading-relaxed">{entry.notes_text}</p>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-                <p className="font-['Inter'] text-[13px] text-[#ECE8E1] leading-relaxed">{note.notes_text}</p>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Intent + Emoji Row */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

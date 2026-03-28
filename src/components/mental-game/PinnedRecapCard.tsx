@@ -96,28 +96,39 @@ export function PinnedRecapCard({ recap, isDismissed, onDismiss, onShow, onViewF
         )}
       </div>
 
-      {/* Scenario Technique Notes (priority) */}
-      {hasScenarioNotes && (
-        <div className="mb-4">
-          <div className="flex items-center gap-1.5 mb-2">
-            <FileText className="w-3 h-3 text-[#5A6872]" />
-            <span className="font-['Inter'] text-[10px] font-semibold uppercase tracking-[1.5px] text-[#5A6872]">
-              Scenario Notes
-            </span>
+      {/* Scenario Technique Notes (priority) — deduplicated, one per scenario */}
+      {hasScenarioNotes && (() => {
+        // Deduplicate: keep the LAST (most recent) unique note per scenario
+        const uniqueByScenario = new Map<string, { scenario_name: string; notes_text: string }>();
+        for (const note of scenarioNotes) {
+          // Overwrite = last entry wins (most recent note for that scenario)
+          uniqueByScenario.set(note.scenario_name, note);
+        }
+        const dedupedNotes = Array.from(uniqueByScenario.values());
+        const totalScenarios = dedupedNotes.length;
+
+        return (
+          <div className="mb-4">
+            <div className="flex items-center gap-1.5 mb-2">
+              <FileText className="w-3 h-3 text-[#5A6872]" />
+              <span className="font-['Inter'] text-[10px] font-semibold uppercase tracking-[1.5px] text-[#5A6872]">
+                Scenario Notes
+              </span>
+            </div>
+            <div className="space-y-2">
+              {dedupedNotes.slice(0, maxNotes).map((note, i) => (
+                <div key={i} className="pl-3 border-l-2 border-[#53CADC]/20">
+                  <p className="font-['JetBrains_Mono'] text-[10px] text-[#53CADC] mb-0.5">{note.scenario_name}</p>
+                  <p className="font-['Inter'] text-[12px] text-[#9CA8B3] leading-relaxed">{note.notes_text}</p>
+                </div>
+              ))}
+              {totalScenarios > maxNotes && (
+                <p className="font-['Inter'] text-[10px] text-[#5A6872]">+{totalScenarios - maxNotes} more in full recap</p>
+              )}
+            </div>
           </div>
-          <div className="space-y-2">
-            {scenarioNotes.slice(0, maxNotes).map((note, i) => (
-              <div key={i} className="pl-3 border-l-2 border-[#53CADC]/20">
-                <p className="font-['JetBrains_Mono'] text-[10px] text-[#53CADC] mb-0.5">{note.scenario_name}</p>
-                <p className="font-['Inter'] text-[12px] text-[#9CA8B3] leading-relaxed">{note.notes_text}</p>
-              </div>
-            ))}
-            {scenarioNotes.length > maxNotes && (
-              <p className="font-['Inter'] text-[10px] text-[#5A6872]">+{scenarioNotes.length - maxNotes} more in full recap</p>
-            )}
-          </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Freeform Reflection Notes (secondary) */}
       {!hasScenarioNotes && freeformNotes.length > 0 && (
