@@ -124,10 +124,12 @@ export function useWeeklyRecap() {
     if (!user) return { data: null, error: 'No user' };
     setIsGenerating(true);
 
+  const targetWeekStart = weekStart || getLastTrainingWeekMonday().dateStr;
+
     try {
       const { data, error } = await supabase.rpc('generate_weekly_recap', {
         p_user_id: user.id,
-        p_week_start: weekStart || null,
+        p_week_start: targetWeekStart,
       });
 
       if (!error) {
