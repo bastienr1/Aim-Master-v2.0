@@ -185,7 +185,7 @@ export function WeeklyRecapFull({ recap, onBack }: WeeklyRecapFullProps) {
                     {entries.map((entry, i) => (
                       <div key={i} className="flex gap-2">
                         <span className="font-['JetBrains_Mono'] text-[10px] text-[#5A6872] shrink-0 pt-0.5 w-20">
-                          {new Date(entry.session_date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', day: 'numeric' })}
+                          {new Date(entry.session_date).toLocaleDateString('en-US', { weekday: 'short', day: 'numeric' })}
                         </span>
                         <p className="font-['Inter'] text-[12px] text-[#ECE8E1] leading-relaxed">{entry.notes_text}</p>
                       </div>
