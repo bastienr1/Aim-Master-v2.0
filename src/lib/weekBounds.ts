@@ -68,7 +68,7 @@ export function getLastTrainingWeekMonday(): { dateStr: string; date: Date } {
 
   let targetMonday: Date;
 
-  if (day === 6) {
+  if (day === 6 || day === 0) {
     // Saturday (recap day): "last training week" = THIS Monday through yesterday (Fri)
     targetMonday = new Date(thisMonday);
   } else {
