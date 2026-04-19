@@ -82,6 +82,63 @@ export class PlaylistService {
     }
   }
 
+  static async snapshotProgramBaseline(scenarioNames: string[], programId?: string | null): Promise<{
+    success: boolean;
+    sessionStartedAt?: string;
+    snapshotted?: number;
+    error?: string;
+  }> {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return { success: false, error: 'Not authenticated' };
+
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/kovaaks-scores`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({
+            action: 'snapshot_program_baseline',
+            scenarioNames,
+            programId: programId || null,
+          }),
+        }
+      );
+
+      const result = await response.json();
+      if (result.success) return result;
+      return { success: false, error: result.error || 'Snapshot failed' };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Network error' };
+    }
+  }
+
+  static async getLatestBaseline(userId: string, programId?: string | null): Promise<Map<string, number>> {
+    const map = new Map<string, number>();
+    let q = supabase
+      .from('session_baselines')
+      .select('scenario_name, previous_high_score, session_started_at')
+      .eq('user_id', userId)
+      .order('session_started_at', { ascending: false })
+      .limit(500);
+
+    if (programId) q = q.eq('program_id', programId);
+
+    const { data, error } = await q;
+    if (error || !data || data.length === 0) return map;
+
+    // Only keep rows from the most recent session_started_at
+    const mostRecent = data[0].session_started_at;
+    for (const row of data) {
+      if (row.session_started_at !== mostRecent) break;
+      map.set(row.scenario_name, Number(row.previous_high_score) || 0);
+    }
+    return map;
+  }
+
   static async syncProgramScores(scenarioNames: string[]): Promise<{
     success: boolean;
     data?: { synced: number; errors: number; matched: number; total: number; notFound: string[] };

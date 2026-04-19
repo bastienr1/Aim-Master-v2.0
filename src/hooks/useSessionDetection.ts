@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
+import { PlaylistService } from '@/services/PlaylistService';
 import type { GroupedSession, SessionPlay, PRDetection } from '@/types/debrief';
 import { SCORE_DECLINE_THRESHOLD } from '@/constants/debrief-config';
 
@@ -50,17 +51,39 @@ export function useSessionDetection(): UseSessionDetectionReturn {
       }
       console.log('[detectSession] Username:', profile.username);
 
-      // 2. Call the kovaaks-sync edge function to fetch recent activity
-      const { data, error } = await supabase.functions.invoke('kovaaks-sync', {
-        body: { action: 'full_sync', username: profile.username },
-      });
+      // 2. Fetch active program to scope the sync
+      const { data: activeProgram } = await supabase
+        .from('training_programs')
+        .select('id, scenarios_data')
+        .eq('user_id', user.id)
+        .eq('is_active', true)
+        .maybeSingle();
 
-      if (error || !data?.success) {
-        console.error('[detectSession] Sync failed:', error || data);
+      if (!activeProgram) {
+        console.log('[detectSession] No active program — skipping sync');
         setDetecting(false);
         return null;
       }
-      console.log('[detectSession] Sync succeeded');
+
+      const programScenarioNames: string[] = Array.isArray(activeProgram.scenarios_data)
+        ? activeProgram.scenarios_data.map((s: any) => s.scenarioName).filter(Boolean)
+        : [];
+
+      if (programScenarioNames.length === 0) {
+        console.log('[detectSession] Active program has no scenarios');
+        setDetecting(false);
+        return null;
+      }
+
+      // 2b. SCOPED sync: only sync the program's scenarios, not the whole profile
+      console.log('[detectSession] Syncing', programScenarioNames.length, 'program scenarios (scoped)');
+      const syncResult = await PlaylistService.syncProgramScores(programScenarioNames);
+      if (!syncResult.success) {
+        console.error('[detectSession] Scoped sync failed:', syncResult.error);
+        setDetecting(false);
+        return null;
+      }
+      console.log('[detectSession] Scoped sync succeeded:', syncResult.data);
 
       // 3. Get recent scores from score_history (written by full_sync)
       const threeHoursAgo = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString();
@@ -118,40 +141,35 @@ export function useSessionDetection(): UseSessionDetectionReturn {
         aimType: s.scenarios?.category || undefined,
       }));
 
-      // 6. Detect PRs by comparing against user_scenario_stats
+      // 6. Detect PRs by comparing against session_baselines (pre-launch snapshot)
+      const baselineMap = await PlaylistService.getLatestBaseline(user.id, activeProgram.id);
+      console.log('[detectSession] Loaded baseline with', baselineMap.size, 'scenarios');
+
       const prsDetected: PRDetection[] = [];
+      // Track best score per scenario in this session (multiple plays per scenario possible)
+      const bestBySession = new Map<string, number>();
       for (const play of plays) {
-        const matchingScore = typedScores.find(
-          (s) => s.scenarios?.name === play.scenarioName
-        );
-        if (!matchingScore) continue;
+        const current = bestBySession.get(play.scenarioName) ?? 0;
+        if (play.score > current) bestBySession.set(play.scenarioName, play.score);
+      }
 
-        const { data: stats } = await supabase
-          .from('user_scenario_stats')
-          .select('high_score')
-          .eq('user_id', user.id)
-          .eq('scenario_id', matchingScore.scenario_id)
-          .maybeSingle();
+      for (const [scenarioName, sessionBest] of bestBySession.entries()) {
+        const baseline = baselineMap.get(scenarioName);
 
-        if (stats && play.score >= stats.high_score) {
-          const { data: previousScores } = await supabase
-            .from('score_history')
-            .select('score')
-            .eq('user_id', user.id)
-            .eq('scenario_id', matchingScore.scenario_id)
-            .lt('session_date', play.timestamp)
-            .order('score', { ascending: false })
-            .limit(1);
+        if (baseline === undefined) {
+          // No baseline — scenario wasn't part of pre-launch snapshot. Skip silently.
+          console.log('[detectSession] No baseline for', scenarioName, '— skipping PR check');
+          continue;
+        }
 
-          if (previousScores && previousScores.length > 0 && play.score > previousScores[0].score) {
-            const prevBest = previousScores[0].score;
-            prsDetected.push({
-              scenarioName: play.scenarioName,
-              newScore: play.score,
-              previousBest: prevBest,
-              improvementPct: prevBest > 0 ? ((play.score - prevBest) / prevBest) * 100 : 0,
-            });
-          }
+        if (sessionBest > baseline) {
+          prsDetected.push({
+            scenarioName,
+            newScore: sessionBest,
+            previousBest: baseline,
+            improvementPct: baseline > 0 ? ((sessionBest - baseline) / baseline) * 100 : 0,
+          });
+          console.log('[detectSession] PR detected:', scenarioName, baseline, '→', sessionBest);
         }
       }
 

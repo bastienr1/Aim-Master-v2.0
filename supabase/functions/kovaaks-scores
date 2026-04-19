@@ -47,6 +47,85 @@ serve(async (req) => {
     const body = await req.json();
     const { action } = body;
 
+    // ─── snapshot_program_baseline ───
+    // Captures the user's current high scores for a program's scenarios BEFORE
+    // they launch Kovaak's. Used on return to deterministically detect PRs.
+    if (action === 'snapshot_program_baseline') {
+      const { scenarioNames, programId } = body;
+
+      if (!scenarioNames || !Array.isArray(scenarioNames) || scenarioNames.length === 0) {
+        return new Response(JSON.stringify({ error: 'scenarioNames array required' }), {
+          status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      console.log(`Snapshotting baseline for ${scenarioNames.length} scenarios, user: ${userId}, program: ${programId}`);
+
+      const sessionStartedAt = new Date().toISOString();
+
+      // Fetch current high scores for all program scenarios in one query
+      const { data: scenarios } = await supabase
+        .from('scenarios')
+        .select('id, name')
+        .in('name', scenarioNames);
+
+      if (!scenarios || scenarios.length === 0) {
+        // No scenarios in DB yet — write baseline rows with 0 so first-play still counts as PR
+        const rows = scenarioNames.map((name: string) => ({
+          user_id: userId,
+          program_id: programId || null,
+          session_started_at: sessionStartedAt,
+          scenario_name: name,
+          previous_high_score: 0,
+        }));
+        await supabase.from('session_baselines').insert(rows);
+        return new Response(
+          JSON.stringify({ success: true, sessionStartedAt, snapshotted: rows.length, source: 'no-scenarios' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      const scenarioIdByName = new Map<string, string>();
+      scenarios.forEach(s => scenarioIdByName.set(s.name, s.id));
+
+      const { data: stats } = await supabase
+        .from('user_scenario_stats')
+        .select('scenario_id, high_score')
+        .eq('user_id', userId)
+        .in('scenario_id', Array.from(scenarioIdByName.values()));
+
+      const highScoreByScenarioId = new Map<string, number>();
+      (stats || []).forEach(s => highScoreByScenarioId.set(s.scenario_id, Number(s.high_score) || 0));
+
+      const rows = scenarioNames.map((name: string) => {
+        const scenarioId = scenarioIdByName.get(name);
+        const previousHighScore = scenarioId ? (highScoreByScenarioId.get(scenarioId) || 0) : 0;
+        return {
+          user_id: userId,
+          program_id: programId || null,
+          session_started_at: sessionStartedAt,
+          scenario_name: name,
+          previous_high_score: previousHighScore,
+        };
+      });
+
+      const { error: insertErr } = await supabase.from('session_baselines').insert(rows);
+
+      if (insertErr) {
+        console.error('Baseline insert error:', insertErr);
+        return new Response(JSON.stringify({ error: insertErr.message }), {
+          status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      console.log(`Baseline snapshotted: ${rows.length} rows at ${sessionStartedAt}`);
+
+      return new Response(
+        JSON.stringify({ success: true, sessionStartedAt, snapshotted: rows.length }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     if (action === 'sync_program_scores') {
       const { scenarioNames } = body;
 
