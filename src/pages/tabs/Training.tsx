@@ -1078,10 +1078,25 @@ function ActiveProgramView({
               </button>
             </div>
             <button
-              onClick={() => {
+              onClick={async () => {
                 navigator.clipboard.writeText(program.playlist_code!);
                 setCopiedCode(true);
                 setTimeout(() => setCopiedCode(false), 2000);
+
+                // Snapshot pre-session baselines for PR detection before launching
+                const scenarioNames = (program.scenarios_data || []).map((s: any) => s.scenarioName).filter(Boolean);
+                if (scenarioNames.length > 0) {
+                  const snapshot = await Promise.race([
+                    PlaylistService.snapshotProgramBaseline(scenarioNames, program.id),
+                    new Promise<{ success: false; error: string }>((resolve) =>
+                      setTimeout(() => resolve({ success: false, error: 'Snapshot timeout' }), 2000)
+                    ),
+                  ]);
+                  if (!snapshot.success) {
+                    console.warn('[launch] Baseline snapshot failed, PR detection may be unreliable:', snapshot.error);
+                  }
+                }
+
                 onSessionStart?.();
                 window.open(`steam://run/824270/?action=jump-to-playlist;sharecode=${program.playlist_code}`, '_self');
               }}
