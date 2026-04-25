@@ -89,7 +89,7 @@ export function UnifiedSessionCard({ session, defaultOpen = false }: Props) {
         </div>
         <div className="flex items-center gap-2.5">
           {prCount > 0 && (
-            <span className="font-['JetBrains_Mono'] text-[9px] font-semibold px-1.5 py-0.5 rounded bg-[#FF4655]/10 text-[#FF4655] border border-[#FF4655]/15">PR</span>
+            <span className="font-['JetBrains_Mono'] text-[9px] font-semibold px-1.5 py-0.5 rounded bg-[#3DD598]/10 text-[#3DD598] border border-[#3DD598]/15">PR</span>
           )}
           <span className="font-['Rajdhani'] text-[14px] font-bold lowercase tracking-wide" style={{ color: moodColor }}>{moodLabel}</span>
           <QualityPips quality={session.session_quality} />
@@ -126,13 +126,15 @@ export function UnifiedSessionCard({ session, defaultOpen = false }: Props) {
 
           {/* PR banner */}
           {prCount > 0 && (
-            <div className="flex items-center gap-2.5 px-3.5 py-2 mb-2.5 rounded-lg border border-[#FF4655]/[0.18]" style={{ background: 'linear-gradient(135deg, rgba(255,70,85,0.08), rgba(255,70,85,0.02))' }}>
-              <div className="w-5 h-5 bg-[#FF4655]/10 rounded flex items-center justify-center text-[11px]">🏆</div>
-              <span className="font-['Rajdhani'] text-[14px] font-bold text-[#FF4655]">{prCount} New PR{prCount !== 1 ? 's' : ''}</span>
-              {Object.keys(session.categories).length > 0 && (
+            <div className="flex items-center gap-2.5 px-3.5 py-2 mb-2.5 rounded-lg border border-[#3DD598]/[0.22]" style={{ background: 'linear-gradient(135deg, rgba(61,213,152,0.08), rgba(61,213,152,0.02))' }}>
+              <div className="w-5 h-5 bg-[#3DD598]/10 rounded flex items-center justify-center text-[11px]">🏆</div>
+              <span className="font-['Rajdhani'] text-[14px] font-bold text-[#3DD598]">{prCount} New PR{prCount !== 1 ? 's' : ''}</span>
+              {session.prs_detected.length > 0 && (
                 <>
-                  <div className="w-px h-3.5 bg-[#FF4655]/[0.12]" />
-                  <span className="font-['JetBrains_Mono'] text-[10px] text-[#9CA8B3] bg-white/[0.04] px-1.5 py-0.5 rounded">{Object.keys(session.categories).join(', ')}</span>
+                  <div className="w-px h-3.5 bg-[#3DD598]/[0.18]" />
+                  <span className="font-['JetBrains_Mono'] text-[10px] text-[#9CA8B3] bg-white/[0.04] px-1.5 py-0.5 rounded truncate" title={session.prs_detected.map(pr => pr.scenarioName).join(', ')}>
+                    {session.prs_detected.map(pr => pr.scenarioName).join(', ')}
+                  </span>
                 </>
               )}
             </div>
