@@ -30,9 +30,16 @@ export function useSessionDetection(): UseSessionDetectionReturn {
   const [sessionData, setSessionData] = useState<GroupedSession | null>(null);
   const [detecting, setDetecting] = useState(false);
   const lastDetectionRef = useRef<string | null>(null);
+  const debriefInProgressRef = useRef(false);
 
   const detectSession = useCallback(async (): Promise<GroupedSession | null> => {
     if (!user) { console.log('[detectSession] No user — aborting'); return null; }
+
+    if (debriefInProgressRef.current) {
+      console.log('[detectSession] BLOCKED: debrief already in progress');
+      return null;
+    }
+
     console.log('[detectSession] Starting detection...');
     setDetecting(true);
 
@@ -85,8 +92,23 @@ export function useSessionDetection(): UseSessionDetectionReturn {
       }
       console.log('[detectSession] Scoped sync succeeded:', syncResult.data);
 
-      // 3. Get recent scores from score_history (written by full_sync)
-      const threeHoursAgo = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString();
+      // 3. Determine session start boundary from session_baselines (set on Launch).
+      // Falls back to 1 hour ago if no baseline exists (rare; pre-launch desync).
+      const { data: latestBaseline } = await supabase
+        .from('session_baselines')
+        .select('session_started_at')
+        .eq('user_id', user.id)
+        .eq('program_id', activeProgram.id)
+        .order('session_started_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      const sessionStartBoundary = latestBaseline?.session_started_at
+        ?? new Date(Date.now() - 60 * 60 * 1000).toISOString();
+
+      console.log('[detectSession] Session boundary:', sessionStartBoundary, latestBaseline ? '(from baseline)' : '(1h fallback)');
+
+      // Get scores written AFTER the session start boundary
       const { data: recentScores, error: scoresError } = await supabase
         .from('score_history')
         .select(`
@@ -96,7 +118,7 @@ export function useSessionDetection(): UseSessionDetectionReturn {
           scenarios!inner(name, category, kovaaks_id)
         `)
         .eq('user_id', user.id)
-        .gte('session_date', threeHoursAgo)
+        .gte('session_date', sessionStartBoundary)
         .order('session_date', { ascending: true });
 
       if (scoresError || !recentScores || recentScores.length === 0) {
@@ -122,11 +144,11 @@ export function useSessionDetection(): UseSessionDetectionReturn {
         .from('session_debriefs')
         .select('id')
         .eq('user_id', user.id)
-        .gte('session_end', threeHoursAgo)
+        .gte('session_end', sessionStartBoundary)
         .limit(1);
 
       if (existingDebrief && existingDebrief.length > 0) {
-        console.log('[detectSession] BLOCKED: existing debrief found within 3 hours');
+        console.log('[detectSession] BLOCKED: existing debrief found within session boundary');
         setDetecting(false);
         return null;
       }
@@ -219,6 +241,7 @@ export function useSessionDetection(): UseSessionDetectionReturn {
       };
 
       lastDetectionRef.current = latestScoreDate;
+      debriefInProgressRef.current = true;
       setSessionData(grouped);
       setDetecting(false);
       return grouped;
@@ -231,16 +254,20 @@ export function useSessionDetection(): UseSessionDetectionReturn {
 
   const clearSession = useCallback(() => {
     setSessionData(null);
+    debriefInProgressRef.current = false;
+    console.log('[detectSession] Lock cleared — debrief closed');
   }, []);
 
   const resetDetection = useCallback(() => {
     lastDetectionRef.current = null;
-    console.log('[detectSession] Detection reset — stale guard cleared');
+    debriefInProgressRef.current = false;
+    console.log('[detectSession] Detection reset — stale guard cleared, lock released');
   }, []);
 
   // Set a minimal empty session so debrief can open even with zero scores
   const setEmptySessionData = useCallback((session: GroupedSession) => {
     console.log('[detectSession] Setting empty session data for score-less debrief');
+    debriefInProgressRef.current = true;
     setSessionData(session);
   }, []);
 
