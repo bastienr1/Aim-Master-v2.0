@@ -12,6 +12,7 @@
  *   aimmaster: tip
  *   title: Undershoot on purpose, then correct
  *   kind: mechanics            # mechanics | mindset
+ *   summary: Optional. Shown on the card instead of the note's opening paragraphs.
  *   themes: [technique_question, consistency]
  *   tags: [flicking, deceleration, clicking]
  *   drill: 10 min of 1w6ts at 80% speed. Score is off-limits.
@@ -38,6 +39,9 @@ const SKIP_DIRS = new Set(['.obsidian', '.trash', '.git', 'node_modules', '.smar
 
 /** Paragraphs of body text kept for the dashboard. */
 const MAX_PARAGRAPHS = 3;
+
+/** Character budget for the card body when falling back to the note text. */
+const MAX_BODY_CHARS = 600;
 
 // ─── Config ───────────────────────────────────────────────────────────────
 
@@ -144,14 +148,54 @@ function stripWikilinks(text) {
     .replace(/\[\[([^\]]+)\]\]/g, '$1');
 }
 
+/**
+ * Turn a markdown block into card-ready prose, or null if it is structure
+ * rather than content. Headings carry nothing on the card, and a callout's own
+ * text is usually the best one-paragraph summary a note has — these notes open
+ * with `> [!abstract] Essence` — so callouts are unwrapped rather than dropped.
+ */
+function blockToProse(block) {
+  const lines = block.split('\n');
+
+  // Heading-only block.
+  if (lines.every((l) => /^\s*#{1,6}\s/.test(l) || !l.trim())) return null;
+
+  // Callout: strip the `>` markers and the `[!type] Title` line.
+  if (lines[0].trimStart().startsWith('>')) {
+    const text = lines
+      .map((l) => l.replace(/^\s*>\s?/, ''))
+      .filter((l) => !/^\[![a-z]+\]/i.test(l.trim()))
+      .join('\n')
+      .trim();
+    return text || null;
+  }
+
+  // A bullet or numbered list is structure; the card wants prose.
+  const content = lines.filter((l) => l.trim());
+  if (content.length && content.every((l) => /^\s*([-*+]|\d+\.)\s/.test(l))) return null;
+
+  // Heading followed by prose in the same block: keep the prose.
+  const body = lines.filter((l) => !/^\s*#{1,6}\s/.test(l)).join('\n').trim();
+  return body || null;
+}
+
 function firstParagraphs(body, limit = MAX_PARAGRAPHS) {
-  return stripWikilinks(body)
+  const blocks = stripWikilinks(body)
     .split(/\n\s*\n/)
-    .map((p) => p.trim())
-    .filter(Boolean)
-    .slice(0, limit)
-    .join('\n\n')
-    .trim();
+    .map((b) => blockToProse(b.trim()))
+    .filter(Boolean);
+
+  // Stop on paragraph count or character budget, whichever comes first — a
+  // long note should not push a wall of text into a card sized for a few lines.
+  const kept = [];
+  let used = 0;
+  for (const block of blocks.slice(0, limit)) {
+    if (kept.length && used + block.length > MAX_BODY_CHARS) break;
+    kept.push(block);
+    used += block.length;
+  }
+
+  return kept.join('\n\n').trim();
 }
 
 /** Frontmatter lists may be a YAML array or a comma-separated string. */
@@ -182,10 +226,16 @@ for await (const file of walk(VAULT_PATH)) {
 
   const relPath = path.relative(VAULT_PATH, file).split(path.sep).join('/');
   const title = String(fm.title || path.basename(file, '.md')).trim();
-  const body = firstParagraphs(parsed.content || '');
+
+  // A `summary:` wins over the note body. Long reference notes (transcripts,
+  // guides) open with headings and callouts, so their first paragraphs make a
+  // poor card; this lets them serve as tips without being rewritten.
+  const body = fm.summary
+    ? stripWikilinks(String(fm.summary)).trim()
+    : firstParagraphs(parsed.content || '');
 
   if (!body) {
-    warnings.push(`${relPath}: tagged as a tip but has no body text — skipped`);
+    warnings.push(`${relPath}: tagged as a tip but has no body text — add a \`summary:\` or body text`);
     continue;
   }
 
