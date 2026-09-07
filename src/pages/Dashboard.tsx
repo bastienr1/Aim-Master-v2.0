@@ -14,6 +14,8 @@ import { Sessions } from './tabs/Sessions';
 import { Profile } from './tabs/Profile';
 import { MentalGame } from './MentalGame';
 import { PreTrainingCheckin } from '@/components/mental-game/PreTrainingCheckin';
+import { BrandBanner } from '@/components/layout/BrandBanner';
+import { SURFACE, TEXT, FONT, RED } from '@/constants/theme';
 import { usePreTrainingGate } from '@/hooks/usePreTrainingGate';
 import { useCheckinStreak } from '@/hooks/useCheckinStreak';
 import { CheckinButton } from '@/components/dashboard/CheckinButton';
@@ -197,7 +199,7 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="h-screen flex bg-[#0F1923] overflow-hidden">
+    <div className="h-screen flex overflow-hidden" style={{ background: SURFACE.page }}>
       {/* Global manual check-in modal — CHANGE 3: pass intent props */}
       <PreTrainingCheckin
         isOpen={showCheckin}
@@ -281,62 +283,153 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Desktop Sidebar */}
-      <aside className="hidden lg:flex w-64 bg-[#1C2B36] border-r border-white/10 flex-col shrink-0">
-        {/* Logo */}
-        <div className="p-6 pb-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#FF4655] to-[#FF4655]/70 flex items-center justify-center shadow-lg shadow-[#FF4655]/20">
-              <Target className="w-5 h-5 text-white" />
-            </div>
-            <div>
-              <h1 className="font-['Rajdhani'] text-xl font-bold text-[#ECE8E1] leading-none">
-                AIM<span className="text-[#FF4655]">MASTER</span>
-              </h1>
-              <p className="text-[#5A6872] text-[10px] font-['Inter'] uppercase tracking-widest mt-0.5">
-                Training Companion
-              </p>
-            </div>
+      {/* Desktop Sidebar — 84px icon rail */}
+      <aside
+        className="hidden lg:flex flex-col shrink-0"
+        style={{
+          width: '84px',
+          background: SURFACE.sidebar,
+          borderRight: `1px solid ${SURFACE.cardBorder}`,
+        }}
+      >
+        {/* Mark */}
+        <div className="flex justify-center" style={{ padding: '18px 0 14px' }}>
+          <div
+            style={{
+              width: '36px',
+              height: '36px',
+              borderRadius: '6px',
+              background: SURFACE.iconBox,
+              border: `1px solid ${RED}`,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Target className="w-4 h-4" style={{ color: RED }} />
           </div>
         </div>
 
         {/* Nav */}
-        <nav className="flex-1 px-3 py-2 space-y-1 overflow-y-auto">
-          {navItems.map((item) => (
-            <button
-              key={item.id}
-              onClick={() => setActiveTab(item.id)}
-              className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium font-['Inter'] transition-all duration-200 ${
-                activeTab === item.id
-                  ? 'bg-[#FF4655] text-white shadow-lg shadow-[#FF4655]/20'
-                  : 'text-[#9CA8B3] hover:bg-white/5 hover:text-white'
-              }`}
-            >
-              <item.icon className="w-5 h-5" />
-              {item.label}
-            </button>
-          ))}
+        <nav className="flex-1 overflow-y-auto" style={{ padding: '4px 0' }}>
+          {navItems.map((item) => {
+            const isActive = activeTab === item.id;
+            return (
+              <button
+                key={item.id}
+                onClick={() => setActiveTab(item.id)}
+                title={item.label}
+                style={{
+                  position: 'relative',
+                  width: '100%',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: '5px',
+                  padding: '11px 0',
+                  background: isActive ? 'rgba(255, 42, 42, 0.10)' : 'transparent',
+                  color: isActive ? RED : TEXT.label,
+                  cursor: 'pointer',
+                  borderStyle: 'solid',
+                  borderWidth: '0 3px 0 0',
+                  borderColor: isActive ? RED : 'transparent',
+                  transition: 'color 150ms ease, background 150ms ease',
+                }}
+                onMouseEnter={(e) => {
+                  if (!isActive) e.currentTarget.style.color = TEXT.primary;
+                }}
+                onMouseLeave={(e) => {
+                  if (!isActive) e.currentTarget.style.color = TEXT.label;
+                }}
+              >
+                <item.icon className="w-[18px] h-[18px]" />
+                <span
+                  style={{
+                    fontFamily: FONT.mono,
+                    fontSize: '10px',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.04em',
+                    lineHeight: 1,
+                  }}
+                >
+                  {item.label}
+                </span>
+              </button>
+            );
+          })}
         </nav>
 
-        {/* Check-in button in sidebar */}
-        <div className="px-3 pb-2">
+        {/* Check-in */}
+        <div className="flex justify-center" style={{ padding: '8px 6px' }}>
           <CheckinButton onClick={triggerCheckin} />
         </div>
 
+        {/* Motto */}
+        <div className="flex flex-col items-center" style={{ padding: '10px 0 8px' }}>
+          <span aria-hidden style={{ width: '22px', height: '2px', background: RED, marginBottom: '8px' }} />
+          {['Aim', 'Discipline', 'Builds', 'Freedom'].map((word) => (
+            <span
+              key={word}
+              style={{
+                fontFamily: FONT.mono,
+                fontSize: '9px',
+                textTransform: 'uppercase',
+                letterSpacing: '0.1em',
+                color: TEXT.dim,
+                lineHeight: 1.7,
+              }}
+            >
+              {word}
+            </span>
+          ))}
+        </div>
+
         {/* Sign out */}
-        <div className="p-3 border-t border-white/5">
+        <div style={{ padding: '8px 0 14px', borderTop: `1px solid ${SURFACE.cardBorder}` }}>
           <button
             onClick={signOut}
-            className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium font-['Inter'] text-[#9CA8B3] hover:bg-white/5 hover:text-[#FF4655] transition-all duration-200"
+            title="Sign Out"
+            style={{
+              width: '100%',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: '5px',
+              padding: '8px 0',
+              background: 'transparent',
+              border: 'none',
+              color: TEXT.dim,
+              cursor: 'pointer',
+              transition: 'color 150ms ease',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.color = RED;
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.color = TEXT.dim;
+            }}
           >
-            <LogOut className="w-5 h-5" />
-            Sign Out
+            <LogOut className="w-[18px] h-[18px]" />
+            <span
+              style={{
+                fontFamily: FONT.mono,
+                fontSize: '10px',
+                textTransform: 'uppercase',
+                letterSpacing: '0.04em',
+                lineHeight: 1,
+              }}
+            >
+              Sign Out
+            </span>
           </button>
         </div>
       </aside>
 
       {/* Main content */}
       <main className="flex-1 overflow-y-auto pt-[57px] lg:pt-0">
+        <div className="hidden lg:block">
+          <BrandBanner />
+        </div>
         <div style={{ display: activeTab === 'home' ? 'block' : 'none' }}>
           <Home profile={profile} onNavigate={handleNavigate} onRefresh={loadProfile} onTriggerCheckin={triggerCheckin} />
           {/* Streak card injected at the top of the home tab content area */}

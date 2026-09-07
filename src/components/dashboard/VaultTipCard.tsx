@@ -63,7 +63,7 @@ export function VaultTipCard({
   // Nothing synced yet - tell the user the exact command, don't invent a tip.
   if (isEmpty || !tip) {
     return (
-      <div style={{ ...cardStyle, justifyContent: 'center' }}>
+      <div style={cardStyle}>
         {label('From your vault')}
         <p
           style={{

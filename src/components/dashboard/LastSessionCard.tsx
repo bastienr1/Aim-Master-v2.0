@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Crosshair, Pencil, ArrowRight, Check, X } from 'lucide-react';
+import { Crosshair, Pencil, ArrowRight, Check, X, ChevronRight } from 'lucide-react';
 import { getThemeConfig, THEME_KIND_COLOR } from '@/constants/debrief-config';
 import { SURFACE, TEXT, RADIUS, FONT, RED } from '@/constants/theme';
 import type { LastDebriefRow } from '@/hooks/useLastDebrief';
@@ -248,6 +248,10 @@ export function LastSessionCard({
                       {note.notes_text}
                     </p>
                   </div>
+                  <ChevronRight
+                    size={13}
+                    style={{ flexShrink: 0, color: TEXT.dim, marginTop: '1px' }}
+                  />
                 </div>
               );
             })}
