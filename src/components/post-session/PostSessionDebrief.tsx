@@ -64,6 +64,7 @@ export function PostSessionDebrief({
     freeformText: null,
     emojiReaction: null,
     sessionQuality: null,
+    nextIntent: null,
   });
 
   const [debriefCount, setDebriefCount] = useState(0);
@@ -82,6 +83,7 @@ export function PostSessionDebrief({
         freeformText: null,
         emojiReaction: null,
         sessionQuality: null,
+        nextIntent: null,
       };
 
       getDebriefCount().then(setDebriefCount);
