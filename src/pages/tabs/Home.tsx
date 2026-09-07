@@ -12,14 +12,14 @@ import { ActiveMissionCard } from '@/components/dashboard/ActiveMissionCard';
 import { BandLabel } from '@/components/dashboard/BandLabel';
 import { SignalsRow } from '@/components/dashboard/SignalsRow';
 import { CoachLine } from '@/components/dashboard/CoachLine';
-import { LastSessionCard } from '@/components/dashboard/LastSessionCard';
+import { LogbookCard } from '@/components/dashboard/LogbookCard';
 import { VaultTipCard } from '@/components/dashboard/VaultTipCard';
 import { StartTrainingBar } from '@/components/dashboard/StartTrainingBar';
 import { usePRDetection } from '@/hooks/usePRDetection';
 import { useBenchmarkRadarData, BenchmarkScenarioRow } from '@/hooks/useBenchmarkRadarData';
 import { useGoals } from '@/hooks/useGoals';
 import { useGoalStrategy } from '@/hooks/useGoalStrategy';
-import { useLastDebrief } from '@/hooks/useLastDebrief';
+import { useDebriefHistory } from '@/hooks/useDebriefHistory';
 import { useVaultTip } from '@/hooks/useVaultTip';
 import { getMomentumContext } from '@/utils/momentum-context';
 import { SURFACE, TEXT, RADIUS, RED, FONT } from '@/constants/theme';
@@ -84,14 +84,11 @@ export function Home({ profile, onNavigate, onRefresh, onTriggerCheckin }: HomeP
 
   const [syncing, setSyncing] = useState(false);
 
-  // Journal sources for the Last session + vault tip cards
-  const {
-    debrief: lastDebrief,
-    loading: loadingDebrief,
-    reload: reloadDebrief,
-    updateNextIntent,
-  } = useLastDebrief();
-  const vaultTip = useVaultTip(lastDebrief);
+  // Journal sources for the Logbook + Playbook cards
+  const history = useDebriefHistory();
+  const { reload: reloadDebrief } = history;
+  // The tip is matched against the newest debrief, not the day being browsed.
+  const vaultTip = useVaultTip(history.debriefs[0] ?? null);
 
   const isConnected = !!syncData?.username;
 
@@ -475,11 +472,18 @@ export function Home({ profile, onNavigate, onRefresh, onTriggerCheckin }: HomeP
       {/* Section 3: Last session + vault tip — the journal core */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 mb-6">
         <div className="lg:col-span-7">
-          <LastSessionCard
-            debrief={lastDebrief}
-            loading={loadingDebrief}
-            onUpdateNextIntent={updateNextIntent}
+          <LogbookCard
+            current={history.current}
+            index={history.index}
+            total={history.debriefs.length}
+            hasPrev={history.hasPrev}
+            hasNext={history.hasNext}
+            loading={history.loading}
+            onPrev={history.prev}
+            onNext={history.next}
+            onUpdateNextIntent={history.updateNextIntent}
             onStartTraining={goToTraining}
+            onNavigate={onNavigate}
           />
         </div>
         <div className="lg:col-span-5">
