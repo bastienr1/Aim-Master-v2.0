@@ -4,10 +4,3 @@
 .vercel
 
 node_modules/
-
-# dist/ IS committed on purpose: the Vercel project has no VITE_* environment
-# variables configured, so a build there produces a bundle with an undefined
-# Supabase URL. The committed bundle is built locally with .env present.
-# Remove this only after setting VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY
-# in Vercel and confirming a cache-free deploy works.
-*.tsbuildinfo
