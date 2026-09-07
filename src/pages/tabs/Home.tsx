@@ -8,7 +8,7 @@ import { ProfileOnboarding } from '@/components/onboarding/ProfileOnboarding';
 
 // New Battle Stats components
 import { MentalGameBar } from '@/components/dashboard/MentalGameBar';
-import { GoalRoadmap } from '@/components/dashboard/GoalRoadmap';
+import { ActiveMissionCard } from '@/components/dashboard/ActiveMissionCard';
 import { BandLabel } from '@/components/dashboard/BandLabel';
 import { SignalsRow } from '@/components/dashboard/SignalsRow';
 import { CoachLine } from '@/components/dashboard/CoachLine';
@@ -62,7 +62,7 @@ function SectionError({ onRetry, label }: { onRetry: () => void; label: string }
 export function Home({ profile, onNavigate, onRefresh, onTriggerCheckin }: HomeProps) {
   const { user } = useAuth();
   const prData = usePRDetection();
-  const { primaryGoal } = useGoals();
+  const { primaryGoal, activeGoals } = useGoals();
 
   // Profile completeness check — wait for profile to load before deciding
   const isProfileLoaded = profile !== null && profile !== undefined;
@@ -232,7 +232,7 @@ export function Home({ profile, onNavigate, onRefresh, onTriggerCheckin }: HomeP
   }, [loadAllData, isProfileComplete]);
 
   // benchmarkData still loads: the radar component is gone from Home, but
-  // GoalRoadmap's strategy is derived from these axes.
+  // ActiveMissionCard's strategy is derived from these axes.
   const radarResult = useBenchmarkRadarData(benchmarkData);
 
   const goToTraining = useCallback(() => onNavigate('training'), [onNavigate]);
@@ -434,11 +434,12 @@ export function Home({ profile, onNavigate, onRefresh, onTriggerCheckin }: HomeP
         </div>
       </div>
 
-      {/* Goal Roadmap — Hero position */}
+      <BandLabel>Today</BandLabel>
       <div className="mb-6">
-        <GoalRoadmap
+        <ActiveMissionCard
           goal={primaryGoal}
           strategy={goalStrategy}
+          activeGoals={activeGoals}
           onNavigate={onNavigate}
         />
       </div>
