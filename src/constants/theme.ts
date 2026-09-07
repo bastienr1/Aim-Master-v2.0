@@ -1,3 +1,5 @@
+import { THEME_KIND_COLOR } from './debrief-config';
+
 // ─── Dashboard v4 design tokens ───
 // One job per colour. A colour that does not come from data is decoration:
 // when a `kind` is null, render neutral rather than inventing a hue.
@@ -44,4 +46,31 @@ export const FONT = {
   heading: "'Rajdhani', sans-serif",
   body: "'Inter', sans-serif",
   mono: "'JetBrains Mono', monospace",
+} as const;
+
+// ─── Semantic roles (Dashboard v5) ───
+
+/**
+ * Roles by meaning rather than hue. The three kind colours are re-exported from
+ * THEME_KIND_COLOR, never re-declared — a second copy of those hexes is exactly
+ * the drift the v4 system was built to avoid.
+ */
+export const SEMANTIC = {
+  positive: THEME_KIND_COLOR.positive,
+  mechanics: THEME_KIND_COLOR.mechanics,
+  mindset: THEME_KIND_COLOR.mindset,
+  action: RED,
+} as const;
+
+/**
+ * Shared style for the centred band/section headings.
+ * textIndent offsets the trailing letter-space so the caps sit optically centred.
+ */
+export const SECTION_TITLE = {
+  fontFamily: FONT.mono,
+  fontWeight: 700,
+  fontSize: 15,
+  letterSpacing: '0.2em',
+  textIndent: '0.2em',
+  textAlign: 'center',
 } as const;
