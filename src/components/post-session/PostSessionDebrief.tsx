@@ -139,10 +139,11 @@ export function PostSessionDebrief({
   );
 
   const handleRatingComplete = useCallback(
-    async (quality: number) => {
+    async (quality: number, nextIntent: string | null) => {
       if (submitting) return;
 
       debriefRef.current.sessionQuality = quality;
+      debriefRef.current.nextIntent = nextIntent;
 
       // If there's an active primary goal, show goal check-in screen
       if (primaryGoal) {

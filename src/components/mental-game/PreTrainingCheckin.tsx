@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Target } from 'lucide-react';
+import { useLastDebrief } from '@/hooks/useLastDebrief';
 import { CheckinSlider } from './CheckinSlider';
 import { IntentSelector } from './IntentSelector';
 import { CoachingInsight } from './CoachingInsight';
@@ -37,6 +38,8 @@ export function PreTrainingCheckin({ isOpen, onClose, onComplete, onIntentComple
   const [focus, setFocus] = useState<number | null>(null);
   const [mood, setMood] = useState<number | null>(null);
   const [intent, setIntent] = useState<string | null>(null);
+  const { debrief: lastDebrief } = useLastDebrief();
+  const carryForward = lastDebrief?.next_intent ?? null;
 
   // Modal state
   const [modalState, setModalState] = useState<ModalState>('form');
@@ -306,6 +309,23 @@ export function PreTrainingCheckin({ isOpen, onClose, onComplete, onIntentComple
                     onChange={setMood}
                     config={MOOD_CONFIG}
                   />
+                  {carryForward && (
+                    <div
+                      className="rounded-lg px-3 py-2.5 border-l-2"
+                      style={{
+                        backgroundColor: 'rgba(255, 70, 85, 0.06)',
+                        borderLeftColor: '#FF4655',
+                      }}
+                    >
+                      <p className="text-[10px] font-['Inter'] uppercase tracking-wider text-[#FF4655] mb-1">
+                        Carried from last session
+                      </p>
+                      <p className="text-sm font-['Inter'] text-[#ECE8E1] leading-snug">
+                        {carryForward}
+                      </p>
+                    </div>
+                  )}
+
                   <IntentSelector value={intent} onChange={setIntent} hasKovaaks={hasKovaaks} />
                 </div>
 
