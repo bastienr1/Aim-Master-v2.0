@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
-import { relativeTime, getCategoryColor } from '@/lib/time';
+import { relativeTime } from '@/lib/time';
 import {
   RefreshCw, Crosshair,
   TrendingUp, TrendingDown, Minus, ArrowRight, Brain,
@@ -13,17 +13,20 @@ import {
 import { ProfileOnboarding } from '@/components/onboarding/ProfileOnboarding';
 
 // New Battle Stats components
-import { SkillRadar } from '@/components/dashboard/SkillRadar';
-import { MissionBriefingV2 } from '@/components/dashboard/MissionBriefingV2';
 import { MentalGameBar } from '@/components/dashboard/MentalGameBar';
 import { PRStreakTracker } from '@/components/dashboard/PRStreakTracker';
-import { BenchmarkRadar } from '@/components/dashboard/BenchmarkRadar';
 import { GoalRoadmap } from '@/components/dashboard/GoalRoadmap';
+import { LastSessionCard } from '@/components/dashboard/LastSessionCard';
+import { VaultTipCard } from '@/components/dashboard/VaultTipCard';
+import { StartTrainingBar } from '@/components/dashboard/StartTrainingBar';
 import { usePRDetection } from '@/hooks/usePRDetection';
 import { useBenchmarkRadarData, BenchmarkScenarioRow } from '@/hooks/useBenchmarkRadarData';
 import { useGoals } from '@/hooks/useGoals';
 import { useGoalStrategy } from '@/hooks/useGoalStrategy';
+import { useLastDebrief } from '@/hooks/useLastDebrief';
+import { useVaultTip } from '@/hooks/useVaultTip';
 import { getMomentumContext } from '@/utils/momentum-context';
+import { SURFACE, TEXT, RADIUS, RED } from '@/constants/theme';
 
 interface HomeProps {
   profile: any;
@@ -33,17 +36,26 @@ interface HomeProps {
 }
 
 function SkeletonBlock({ className }: { className?: string }) {
-  return <div className={`animate-pulse bg-[#2A3A47] rounded-xl ${className || ''}`} />;
+  return (
+    <div
+      className={`animate-pulse ${className || ''}`}
+      style={{ background: SURFACE.card, borderRadius: RADIUS.card }}
+    />
+  );
 }
 
 function SectionError({ onRetry, label }: { onRetry: () => void; label: string }) {
   return (
-    <div className="bg-[#2A3A47] border border-white/10 rounded-xl p-6 text-center">
-      <AlertCircle className="w-8 h-8 text-[#FF4655]/60 mx-auto mb-2" />
-      <p className="text-[#9CA8B3] text-sm font-['Inter'] mb-3">Unable to load {label}</p>
+    <div
+      className="p-6 text-center"
+      style={{ background: SURFACE.card, border: `1px solid ${SURFACE.cardBorder}`, borderRadius: RADIUS.card }}
+    >
+      <AlertCircle className="w-8 h-8 mx-auto mb-2" style={{ color: `${RED}99` }} />
+      <p className="text-sm font-['Inter'] mb-3" style={{ color: TEXT.body }}>Unable to load {label}</p>
       <button
         onClick={onRetry}
-        className="text-[#FF4655] text-sm font-semibold font-['Inter'] hover:underline"
+        className="text-sm font-semibold font-['Inter'] hover:underline"
+        style={{ color: RED, background: 'transparent', border: 'none', cursor: 'pointer' }}
       >
         Retry
       </button>
@@ -71,20 +83,19 @@ export function Home({ profile, onNavigate, onRefresh, onTriggerCheckin }: HomeP
   const [errorMomentum, setErrorMomentum] = useState(false);
 
 
-  // Charts
-  const [chartData, setChartData] = useState<any>(null);
-  const [loadingCharts, setLoadingCharts] = useState(true);
-  const [errorCharts, setErrorCharts] = useState(false);
-
-  // Coach
-  const [coachData, setCoachData] = useState<any>(null);
-  const [loadingCoach, setLoadingCoach] = useState(true);
-  const [errorCoach, setErrorCoach] = useState(false);
-
   // Benchmark Radar
   const [benchmarkData, setBenchmarkData] = useState<BenchmarkScenarioRow[] | null>(null);
 
   const [syncing, setSyncing] = useState(false);
+
+  // Journal sources for the Last session + vault tip cards
+  const {
+    debrief: lastDebrief,
+    loading: loadingDebrief,
+    reload: reloadDebrief,
+    updateNextIntent,
+  } = useLastDebrief();
+  const vaultTip = useVaultTip(lastDebrief);
 
   const isConnected = !!syncData?.username;
 
@@ -174,106 +185,6 @@ export function Home({ profile, onNavigate, onRefresh, onTriggerCheckin }: HomeP
   }, [user]);
 
 
-  const loadCharts = useCallback(async () => {
-    if (!user) return;
-    setLoadingCharts(true);
-    setErrorCharts(false);
-    try {
-      const { data: statsData, error: statsErr } = await supabase
-        .from('user_scenario_stats')
-        .select('scenario_id, scenarios(category)')
-        .eq('user_id', user.id);
-      if (statsErr) throw statsErr;
-
-      const catCounts: Record<string, number> = {};
-      (statsData || []).forEach((s: any) => {
-        const cat = (s.scenarios as any)?.category || 'Other';
-        catCounts[cat] = (catCounts[cat] || 0) + 1;
-      });
-      const distribution = Object.entries(catCounts).map(([name, value]) => ({
-        name,
-        value,
-        color: getCategoryColor(name),
-      }));
-
-      setChartData({ distribution });
-    } catch {
-      setErrorCharts(true);
-    } finally {
-      setLoadingCharts(false);
-    }
-  }, [user]);
-
-  const loadCoach = useCallback(async () => {
-    if (!user) return;
-    setLoadingCoach(true);
-    setErrorCoach(false);
-    try {
-      const { data: lastSession } = await supabase
-        .from('score_history')
-        .select('session_date')
-        .eq('user_id', user.id)
-        .order('session_date', { ascending: false })
-        .limit(1);
-
-      const lastDate = lastSession?.[0]?.session_date;
-      const daysSinceLast = lastDate
-        ? Math.floor((Date.now() - new Date(lastDate).getTime()) / (1000 * 60 * 60 * 24))
-        : 999;
-
-      const { data: catStats } = await supabase
-        .from('user_scenario_stats')
-        .select('high_score, total_attempts, scenarios(category, name)')
-        .eq('user_id', user.id);
-
-      const catAvgs: Record<string, { total: number; count: number }> = {};
-      (catStats || []).forEach((s: any) => {
-        const cat = (s.scenarios as any)?.category || 'Other';
-        if (!catAvgs[cat]) catAvgs[cat] = { total: 0, count: 0 };
-        catAvgs[cat].total += Number(s.high_score) || 0;
-        catAvgs[cat].count += 1;
-      });
-
-      const catAverages = Object.entries(catAvgs).map(([cat, v]) => ({
-        category: cat,
-        avg: v.count > 0 ? v.total / v.count : 0,
-      }));
-
-      let weakest = catAverages.length > 0
-        ? catAverages.reduce((a, b) => (a.avg < b.avg ? a : b))
-        : null;
-      let strongest = catAverages.length > 0
-        ? catAverages.reduce((a, b) => (a.avg > b.avg ? a : b))
-        : null;
-
-      let suggestedScenario: string | null = null;
-      if (weakest) {
-        const weakCatStats = (catStats || []).filter(
-          (s: any) => (s.scenarios as any)?.category === weakest!.category
-        );
-        if (weakCatStats.length > 0) {
-          const least = weakCatStats.reduce((a: any, b: any) =>
-            (a.total_attempts || 0) < (b.total_attempts || 0) ? a : b
-          );
-          suggestedScenario = (least.scenarios as any)?.name || null;
-        }
-      }
-
-      setCoachData({
-        daysSinceLast,
-        weakest,
-        strongest,
-        suggestedScenario,
-        totalStats: catStats?.length || 0,
-        catAverages,
-      });
-    } catch {
-      setErrorCoach(true);
-    } finally {
-      setLoadingCoach(false);
-    }
-  }, [user]);
-
   const loadBenchmarkRadar = useCallback(async () => {
     if (!profile?.id) return;
 
@@ -312,12 +223,11 @@ export function Home({ profile, onNavigate, onRefresh, onTriggerCheckin }: HomeP
     await Promise.all([
       loadSyncStatus(),
       loadMomentum(),
-      loadCharts(),
-      loadCoach(),
       loadBenchmarkRadar(),
+      reloadDebrief(),
     ]);
     setSyncing(false);
-  }, [loadSyncStatus, loadMomentum, loadCharts, loadCoach, loadBenchmarkRadar]);
+  }, [loadSyncStatus, loadMomentum, loadBenchmarkRadar, reloadDebrief]);
 
   useEffect(() => {
     if (isProfileComplete) {
@@ -325,30 +235,25 @@ export function Home({ profile, onNavigate, onRefresh, onTriggerCheckin }: HomeP
     }
   }, [loadAllData, isProfileComplete]);
 
-  const getCoachState = () => {
-    if (!coachData || coachData.totalStats < 3) return 'insufficient';
-    if (coachData.daysSinceLast >= 3) return 'inactive';
-    if (momentumData?.state === 'improving') return 'improving';
-    if (momentumData?.state === 'declining') return 'declining';
-    return 'steady';
-  };
-
-  const coachState = getCoachState();
+  // benchmarkData still loads: the radar component is gone from Home, but
+  // GoalRoadmap's strategy is derived from these axes.
   const radarResult = useBenchmarkRadarData(benchmarkData);
+
+  const goToTraining = useCallback(() => onNavigate('training'), [onNavigate]);
 
   // Goal-aware strategy
   const goalStrategy = useGoalStrategy(primaryGoal, radarResult.axes);
   const momentumContext = getMomentumContext(momentumData?.state, momentumData?.delta);
 
   const getMomentumConfig = () => {
-    if (!momentumData) return { color: '#9CA8B3', icon: Minus, label: 'Loading...' };
+    if (!momentumData) return { color: '#B9B6AF', icon: Minus, label: 'Loading...' };
     switch (momentumData.state) {
       case 'improving':
         return { color: '#3DD598', icon: TrendingUp, label: 'Improving' };
       case 'declining':
         return { color: '#FFCA3A', icon: TrendingDown, label: 'Declining' };
       case 'steady':
-        return { color: '#9CA8B3', icon: Minus, label: 'Steady' };
+        return { color: '#B9B6AF', icon: Minus, label: 'Steady' };
       default:
         return { color: '#53CADC', icon: Minus, label: 'Gathering Data' };
     }
@@ -402,10 +307,10 @@ export function Home({ profile, onNavigate, onRefresh, onTriggerCheckin }: HomeP
 
         {/* Welcome Header */}
         <div className="mb-8">
-          <h1 className="font-['Rajdhani'] text-[28px] font-bold text-[#ECE8E1]">
-            Welcome to <span className="text-[#FF4655]">AIM MASTER</span>, {displayName}
+          <h1 className="font-['Rajdhani'] text-[28px] font-bold text-[#E8E6E1]">
+            Welcome to <span className="text-[#FF2A2A]">AIM MASTER</span>, {displayName}
           </h1>
-          <p className="font-['Inter'] text-[14px] text-[#9CA8B3] mt-1">
+          <p className="font-['Inter'] text-[14px] text-[#B9B6AF] mt-1">
             Your aim training companion — master the mechanics AND the mental game.
           </p>
         </div>
@@ -414,38 +319,38 @@ export function Home({ profile, onNavigate, onRefresh, onTriggerCheckin }: HomeP
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
 
           {/* Card 1: Connect KovaaK's */}
-          <div className="bg-[#1C2B36] border border-[#FF4655]/20 rounded-2xl p-8 flex flex-col order-2 md:order-1">
-            <div className="w-12 h-12 rounded-xl bg-[#2A3A47] flex items-center justify-center mb-5">
-              <Link2 className="w-6 h-6 text-[#FF4655]" />
+          <div className="bg-[#18181B] border border-[#FF2A2A]/20 rounded-md p-8 flex flex-col order-2 md:order-1">
+            <div className="w-12 h-12 rounded-md bg-[#131316] flex items-center justify-center mb-5">
+              <Link2 className="w-6 h-6 text-[#FF2A2A]" />
             </div>
-            <h2 className="font-['Rajdhani'] text-[20px] font-semibold text-[#ECE8E1] mb-2">
+            <h2 className="font-['Rajdhani'] text-[20px] font-semibold text-[#E8E6E1] mb-2">
               Connect Your KovaaK's Account
             </h2>
-            <p className="font-['Inter'] text-[14px] text-[#9CA8B3] mb-4">
+            <p className="font-['Inter'] text-[14px] text-[#B9B6AF] mb-4">
               Link your profile to unlock personalized analytics, benchmark tracking, and performance insights.
             </p>
             <div className="space-y-2 mb-6">
               <div className="flex items-center gap-2">
                 <span className="w-1.5 h-1.5 rounded-full bg-[#3DD598] shrink-0" />
-                <span className="font-['Inter'] text-[13px] text-[#9CA8B3]">Track benchmark progress across Voltaic & Viscose</span>
+                <span className="font-['Inter'] text-[13px] text-[#B9B6AF]">Track benchmark progress across Voltaic & Viscose</span>
               </div>
               <div className="flex items-center gap-2">
                 <span className="w-1.5 h-1.5 rounded-full bg-[#3DD598] shrink-0" />
-                <span className="font-['Inter'] text-[13px] text-[#9CA8B3]">See your aim type breakdown and weak areas</span>
+                <span className="font-['Inter'] text-[13px] text-[#B9B6AF]">See your aim type breakdown and weak areas</span>
               </div>
               <div className="flex items-center gap-2">
                 <span className="w-1.5 h-1.5 rounded-full bg-[#3DD598] shrink-0" />
-                <span className="font-['Inter'] text-[13px] text-[#9CA8B3]">Get coaching insights based on your real data</span>
+                <span className="font-['Inter'] text-[13px] text-[#B9B6AF]">Get coaching insights based on your real data</span>
               </div>
             </div>
             <div className="mt-auto">
               <button
                 onClick={() => onNavigate('profile')}
-                className="w-full bg-[#FF4655] text-white rounded-xl px-6 py-3 font-['Inter'] text-[14px] font-semibold hover:brightness-110 transition-all inline-flex items-center justify-center gap-2"
+                className="w-full bg-[#FF2A2A] text-white rounded-md px-6 py-3 font-['Inter'] text-[14px] font-semibold hover:brightness-110 transition-all inline-flex items-center justify-center gap-2"
               >
                 Connect Now <ArrowRight className="w-4 h-4" />
               </button>
-              <p className="font-['Inter'] text-[11px] text-[#5A6872] text-center mt-2">
+              <p className="font-['Inter'] text-[11px] text-[#8E8B85] text-center mt-2">
                 Requires a KovaaK's Steam account
               </p>
             </div>
@@ -453,45 +358,45 @@ export function Home({ profile, onNavigate, onRefresh, onTriggerCheckin }: HomeP
 
           {/* Card 2: Start Mental Game */}
           <div
-            className="bg-[#1C2B36] border border-[#53CADC]/20 rounded-2xl p-8 flex flex-col order-1 md:order-2"
+            className="bg-[#18181B] border border-[#53CADC]/20 rounded-md p-8 flex flex-col order-1 md:order-2"
             style={{ animation: 'mentalGlow 4s ease-in-out infinite' }}
           >
-            <div className="w-12 h-12 rounded-xl bg-[#2A3A47] flex items-center justify-center mb-5">
+            <div className="w-12 h-12 rounded-md bg-[#131316] flex items-center justify-center mb-5">
               <Brain className="w-6 h-6 text-[#53CADC]" />
             </div>
-            <h2 className="font-['Rajdhani'] text-[20px] font-semibold text-[#ECE8E1] mb-2">
+            <h2 className="font-['Rajdhani'] text-[20px] font-semibold text-[#E8E6E1] mb-2">
               Start Your Mental Game
             </h2>
-            <p className="font-['Inter'] text-[14px] text-[#9CA8B3] mb-4">
+            <p className="font-['Inter'] text-[14px] text-[#B9B6AF] mb-4">
               The best aimers train their mind, not just their mouse. Start with a 60-second readiness check-in.
             </p>
             <div className="space-y-2 mb-3">
               <div className="flex items-center gap-2">
                 <span className="w-1.5 h-1.5 rounded-full bg-[#53CADC] shrink-0" />
-                <span className="font-['Inter'] text-[13px] text-[#9CA8B3]">Pre-training mental check-in (energy, focus, mood)</span>
+                <span className="font-['Inter'] text-[13px] text-[#B9B6AF]">Pre-training mental check-in (energy, focus, mood)</span>
               </div>
               <div className="flex items-center gap-2">
                 <span className="w-1.5 h-1.5 rounded-full bg-[#53CADC] shrink-0" />
-                <span className="font-['Inter'] text-[13px] text-[#9CA8B3]">Track your consistency and readiness over time</span>
+                <span className="font-['Inter'] text-[13px] text-[#B9B6AF]">Track your consistency and readiness over time</span>
               </div>
               <div className="flex items-center gap-2">
                 <span className="w-1.5 h-1.5 rounded-full bg-[#53CADC] shrink-0" />
-                <span className="font-['Inter'] text-[13px] text-[#9CA8B3]">Coaching insights based on sports psychology</span>
+                <span className="font-['Inter'] text-[13px] text-[#B9B6AF]">Coaching insights based on sports psychology</span>
               </div>
             </div>
-            <p className="font-['Inter'] text-[12px] text-[#5A6872] italic mb-6">
+            <p className="font-['Inter'] text-[12px] text-[#8E8B85] italic mb-6">
               Players who check in before training improve 23% faster.
             </p>
             <div className="mt-auto">
               <button
                 onClick={() => onTriggerCheckin?.()}
-                className="w-full border-2 border-[#53CADC] text-[#53CADC] bg-transparent rounded-xl px-6 py-3 font-['Inter'] text-[14px] font-semibold hover:bg-[#53CADC]/10 transition-all inline-flex items-center justify-center gap-2"
+                className="w-full border-2 border-[#53CADC] text-[#53CADC] bg-transparent rounded-md px-6 py-3 font-['Inter'] text-[14px] font-semibold hover:bg-[#53CADC]/10 transition-all inline-flex items-center justify-center gap-2"
               >
                 Start Check-in <ArrowRight className="w-4 h-4" />
               </button>
               <div className="flex items-center justify-center gap-3 mt-2">
                 <span className="font-['Inter'] text-[11px] text-[#3DD598]">No KovaaK's account needed</span>
-                <span className="bg-[#2A3A47] text-[#9CA8B3] font-['Inter'] text-[11px] rounded-full px-2.5 py-0.5">⏱ 60 sec</span>
+                <span className="bg-[#131316] text-[#B9B6AF] font-['Inter'] text-[11px] rounded-full px-2.5 py-0.5">⏱ 60 sec</span>
               </div>
             </div>
           </div>
@@ -499,17 +404,17 @@ export function Home({ profile, onNavigate, onRefresh, onTriggerCheckin }: HomeP
 
         {/* Feature Pills */}
         <div className="flex justify-center gap-3 flex-wrap mt-8">
-          <span className="bg-[#1C2B36] rounded-full px-4 py-2 flex items-center gap-1.5">
-            <Crosshair className="w-3.5 h-3.5 text-[#9CA8B3]" />
-            <span className="font-['Inter'] text-[12px] text-[#9CA8B3]">Performance Tracking</span>
+          <span className="bg-[#18181B] rounded-full px-4 py-2 flex items-center gap-1.5">
+            <Crosshair className="w-3.5 h-3.5 text-[#B9B6AF]" />
+            <span className="font-['Inter'] text-[12px] text-[#B9B6AF]">Performance Tracking</span>
           </span>
-          <span className="bg-[#1C2B36] rounded-full px-4 py-2 flex items-center gap-1.5">
-            <Brain className="w-3.5 h-3.5 text-[#9CA8B3]" />
-            <span className="font-['Inter'] text-[12px] text-[#9CA8B3]">Mental Coaching</span>
+          <span className="bg-[#18181B] rounded-full px-4 py-2 flex items-center gap-1.5">
+            <Brain className="w-3.5 h-3.5 text-[#B9B6AF]" />
+            <span className="font-['Inter'] text-[12px] text-[#B9B6AF]">Mental Coaching</span>
           </span>
-          <span className="bg-[#1C2B36] rounded-full px-4 py-2 flex items-center gap-1.5">
-            <TrendingUp className="w-3.5 h-3.5 text-[#9CA8B3]" />
-            <span className="font-['Inter'] text-[12px] text-[#9CA8B3]">Smart Training</span>
+          <span className="bg-[#18181B] rounded-full px-4 py-2 flex items-center gap-1.5">
+            <TrendingUp className="w-3.5 h-3.5 text-[#B9B6AF]" />
+            <span className="font-['Inter'] text-[12px] text-[#B9B6AF]">Smart Training</span>
           </span>
         </div>
       </div>
@@ -528,17 +433,21 @@ export function Home({ profile, onNavigate, onRefresh, onTriggerCheckin }: HomeP
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
         <div>
-          <h1 className="font-['Rajdhani'] text-[28px] font-bold text-[#ECE8E1]">
-            Welcome back, <span className="text-[#FF4655]">{displayName}</span>
+          <h1
+            className="font-['Rajdhani'] text-[28px] font-bold"
+            style={{ color: TEXT.primary }}
+          >
+            Welcome back, <span style={{ color: RED }}>{displayName}</span>
           </h1>
-          <p className="text-[#9CA8B3] text-sm font-['Inter'] mt-0.5">
+          <p className="text-sm font-['Inter'] mt-0.5" style={{ color: TEXT.label }}>
             Last synced: {relativeTime(syncData?.last_synced_at)}
           </p>
         </div>
         <button
           onClick={loadAllData}
           disabled={syncing}
-          className="bg-[#FF4655] text-white px-5 py-2.5 rounded-xl font-semibold font-['Inter'] text-sm hover:bg-[#FF4655]/90 transition-all shadow-lg shadow-[#FF4655]/20 inline-flex items-center gap-2 disabled:opacity-50 self-start"
+          className="px-5 py-2.5 font-semibold font-['Inter'] text-sm transition-all inline-flex items-center gap-2 disabled:opacity-50 self-start"
+          style={{ background: RED, color: '#FFFFFF', borderRadius: RADIUS.card, border: 'none' }}
         >
           <RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
           Sync Now
@@ -564,43 +473,41 @@ export function Home({ profile, onNavigate, onRefresh, onTriggerCheckin }: HomeP
             <SectionError onRetry={loadMomentum} label="momentum" />
           ) : (
             <div
-              className="rounded-xl p-5 h-full bg-gradient-to-r from-[#1C2B36] to-[#2A3A47] border-l-4 transition-all"
+              className="p-5 h-full transition-all"
               style={{
-                borderLeftColor: momentumConfig.color,
-                borderColor: `${momentumConfig.color}18`,
-                border: `1px solid ${momentumConfig.color}18`,
-                borderLeft: `4px solid ${momentumConfig.color}`,
-                boxShadow: momentumData?.state === 'improving'
-                  ? '0 0 24px rgba(61,213,152,0.04)'
-                  : momentumData?.state === 'declining'
-                  ? '0 0 24px rgba(255,202,58,0.04)'
-                  : 'none',
+                borderRadius: RADIUS.card,
+                borderStyle: 'solid',
+                borderWidth: '1px 1px 1px 4px',
+                borderColor: `${SURFACE.cardBorder} ${SURFACE.cardBorder} ${SURFACE.cardBorder} ${momentumConfig.color}`,
+                background: `linear-gradient(90deg, ${momentumConfig.color}0F, ${SURFACE.card} 60%)`,
               }}
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div
-                    className="w-10 h-10 rounded-xl flex items-center justify-center"
-                    style={{ backgroundColor: `${momentumConfig.color}15` }}
+                    className="w-10 h-10 flex items-center justify-center"
+                    style={{ backgroundColor: SURFACE.iconBox, borderRadius: RADIUS.card }}
                   >
                     <momentumConfig.icon className="w-5 h-5" style={{ color: momentumConfig.color }} />
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
-                      <h3 className="font-['Rajdhani'] text-[15px] font-semibold text-[#ECE8E1]">
+                      <h3 className="font-['Rajdhani'] text-[15px] font-semibold" style={{ color: TEXT.primary }}>
                         Performance Momentum
                       </h3>
                       <span
-                        className="text-[10px] font-semibold font-['Inter'] px-2 py-0.5 rounded-full"
+                        className="text-[10px] font-semibold font-['Inter'] px-2 py-0.5"
                         style={{
-                          backgroundColor: `${momentumConfig.color}15`,
+                          backgroundColor: SURFACE.chip,
+                          border: `1px solid ${momentumConfig.color}40`,
+                          borderRadius: RADIUS.chip,
                           color: momentumConfig.color,
                         }}
                       >
                         {momentumConfig.label}
                       </span>
                     </div>
-                    <p className="text-[#9CA8B3] text-sm font-['JetBrains_Mono'] mt-1 font-bold" style={{ color: momentumConfig.color }}>
+                    <p className="text-sm font-['JetBrains_Mono'] mt-1 font-bold" style={{ color: momentumConfig.color }}>
                       {momentumData.state === 'insufficient'
                         ? 'Gathering data...'
                         : `${momentumData.delta > 0 ? '+' : ''}${momentumData.delta}%`}
@@ -624,9 +531,9 @@ export function Home({ profile, onNavigate, onRefresh, onTriggerCheckin }: HomeP
                 )}
               </div>
               {momentumData.state !== 'insufficient' && (
-                <div className="mt-3 pt-3 border-t border-white/5 space-y-0.5">
-                  <p className="text-[#5A6872] text-[11px] font-['Inter']">{momentumContext.line1}</p>
-                  <p className="text-[#5A6872] text-[11px] font-['Inter']">{momentumContext.line2}</p>
+                <div className="mt-3 pt-3 space-y-0.5" style={{ borderTop: `1px solid ${SURFACE.insetBorder}` }}>
+                  <p className="text-[11px] font-['Inter']" style={{ color: TEXT.label }}>{momentumContext.line1}</p>
+                  <p className="text-[11px] font-['Inter']" style={{ color: TEXT.label }}>{momentumContext.line2}</p>
                 </div>
               )}
             </div>
@@ -646,46 +553,32 @@ export function Home({ profile, onNavigate, onRefresh, onTriggerCheckin }: HomeP
         onNavigate={onNavigate}
       />
 
-      {/* Section 3: Mission Briefing + Battle Stats */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-        {/* Mission Briefing */}
-        <div>
-          {loadingCoach || loadingMomentum ? (
-            <SkeletonBlock className="h-96" />
-          ) : errorCoach ? (
-            <SectionError onRetry={loadCoach} label="coach insights" />
-          ) : (
-            <MissionBriefingV2
-              coachState={coachState}
-              coachData={coachData}
-              momentumData={momentumData}
-              onNavigate={onNavigate}
-              goalStrategy={goalStrategy}
-            />
-          )}
+      {/* Section 3: Last session + vault tip — the journal core */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 mb-6">
+        <div className="lg:col-span-7">
+          <LastSessionCard
+            debrief={lastDebrief}
+            loading={loadingDebrief}
+            onUpdateNextIntent={updateNextIntent}
+            onStartTraining={goToTraining}
+          />
         </div>
+        <div className="lg:col-span-5">
+          <VaultTipCard
+            tip={vaultTip.tip}
+            matchedOn={vaultTip.matchedOn}
+            matchedTheme={vaultTip.matchedTheme}
+            loading={vaultTip.loading}
+            isEmpty={vaultTip.isEmpty}
+            hasMultiple={vaultTip.hasMultiple}
+            onNext={vaultTip.next}
+          />
+        </div>
+      </div>
 
-        {/* Battle Stats Radar */}
-        <div>
-          {loadingCharts ? (
-            <SkeletonBlock className="h-96" />
-          ) : errorCharts ? (
-            <SectionError onRetry={loadCharts} label="charts" />
-          ) : radarResult.hasData ? (
-            <BenchmarkRadar
-              axes={radarResult.axes}
-              overallRank={radarResult.overallRank}
-              overallPercentile={radarResult.overallPercentile}
-              strongest={radarResult.strongest}
-              weakest={radarResult.weakest}
-            />
-          ) : (
-            <SkillRadar
-              distribution={chartData?.distribution}
-              categoryScores={coachData?.catAverages}
-            />
-          )}
-        </div>
+      {/* Section 4: Start training */}
+      <div className="mb-6">
+        <StartTrainingBar onStartTraining={goToTraining} />
       </div>
 
     </div>

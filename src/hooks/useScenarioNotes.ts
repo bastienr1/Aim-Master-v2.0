@@ -1,10 +1,14 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 
+/** How the player classified a scenario note. Null = unclassified, renders neutral. */
+export type NoteKind = 'mechanics' | 'mindset' | 'positive';
+
 interface ScenarioNote {
   scenario_name: string;
   notes: string | null;
   notes_updated_at: string | null;
+  note_kind: NoteKind | null;
 }
 
 interface UseScenarioNotesReturn {
@@ -15,6 +19,8 @@ interface UseScenarioNotesReturn {
   updateNote: (scenarioName: string, text: string) => void;
   hasNote: (scenarioName: string) => boolean;
   noteCount: number;
+  getNoteKind: (scenarioName: string) => NoteKind | null;
+  updateNoteKind: (scenarioName: string, kind: NoteKind | null) => void;
 }
 
 export function useScenarioNotes(
@@ -22,6 +28,7 @@ export function useScenarioNotes(
   programId: string | undefined
 ): UseScenarioNotesReturn {
   const [notes, setNotes] = useState<Map<string, string>>(new Map());
+  const [noteKinds, setNoteKinds] = useState<Map<string, NoteKind>>(new Map());
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const saveTimers = useRef<Map<string, NodeJS.Timeout>>(new Map());
@@ -35,17 +42,20 @@ export function useScenarioNotes(
       try {
         const { data, error } = await supabase
           .from('program_scenario_completions')
-          .select('scenario_name, notes, notes_updated_at')
+          .select('scenario_name, notes, notes_updated_at, note_kind')
           .eq('user_id', userId)
           .eq('program_id', programId)
-          .not('notes', 'is', null);
+          .or('notes.not.is.null,note_kind.not.is.null');
 
         if (!error && data) {
           const noteMap = new Map<string, string>();
+          const kindMap = new Map<string, NoteKind>();
           data.forEach((row: ScenarioNote) => {
             if (row.notes) noteMap.set(row.scenario_name, row.notes);
+            if (row.note_kind) kindMap.set(row.scenario_name, row.note_kind);
           });
           setNotes(noteMap);
+          setNoteKinds(kindMap);
         }
       } catch (e) {
         console.error('Failed to fetch scenario notes:', e);
@@ -138,6 +148,42 @@ export function useScenarioNotes(
     saveTimers.current.set(scenarioName, timer);
   }, [saveNote]);
 
+  const updateNoteKind = useCallback((scenarioName: string, kind: NoteKind | null) => {
+    setNoteKinds(prev => {
+      const next = new Map(prev);
+      if (kind === null) {
+        next.delete(scenarioName);
+      } else {
+        next.set(scenarioName, kind);
+      }
+      return next;
+    });
+
+    if (!userId || !programId) return;
+
+    void (async () => {
+      setSaving(true);
+      try {
+        const { error } = await supabase
+          .from('program_scenario_completions')
+          .update({ note_kind: kind })
+          .eq('user_id', userId)
+          .eq('program_id', programId)
+          .eq('scenario_name', scenarioName);
+
+        if (error) console.error('Failed to save note kind:', error);
+      } catch (e) {
+        console.error('Save note kind error:', e);
+      } finally {
+        setSaving(false);
+      }
+    })();
+  }, [userId, programId]);
+
+  const getNoteKind = useCallback((scenarioName: string) => {
+    return noteKinds.get(scenarioName) ?? null;
+  }, [noteKinds]);
+
   const getNote = useCallback((scenarioName: string) => {
     return notes.get(scenarioName) || '';
   }, [notes]);
@@ -148,5 +194,8 @@ export function useScenarioNotes(
 
   const noteCount = notes.size;
 
-  return { notes, loading, saving, getNote, updateNote, hasNote, noteCount };
+  return {
+    notes, loading, saving, getNote, updateNote, hasNote, noteCount,
+    getNoteKind, updateNoteKind,
+  };
 }

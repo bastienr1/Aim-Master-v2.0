@@ -10,7 +10,7 @@ export function PRStreakTracker({ prData }: PRStreakTrackerProps) {
   // ─── Loading skeleton (matches CheckinStreakCard) ───
   if (prData.isLoading) {
     return (
-      <div className="bg-[#2A3A47] border border-white/5 rounded-xl p-4 animate-pulse">
+      <div className="bg-[#131316] border border-white/[0.08] rounded-md p-4 animate-pulse">
         <div className="w-40 h-4 rounded bg-white/5 mb-2" />
         <div className="w-64 h-3 rounded bg-white/5" />
       </div>
@@ -23,16 +23,16 @@ export function PRStreakTracker({ prData }: PRStreakTrackerProps) {
   // ─── State 2: No PRs this week (encouragement mode) ───
   if (prData.totalPRs === 0) {
     return (
-      <div className="bg-[#2A3A47] border border-white/5 rounded-xl p-4">
+      <div className="bg-[#131316] border border-white/[0.08] rounded-md p-4">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-[#9CA8B3]/10 flex items-center justify-center flex-shrink-0">
-            <Target className="w-4 h-4 text-[#9CA8B3]" />
+          <div className="w-8 h-8 rounded-md bg-[#B9B6AF]/10 flex items-center justify-center flex-shrink-0">
+            <Target className="w-4 h-4 text-[#B9B6AF]" />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-['Inter'] text-[#ECE8E1] font-medium">
+            <p className="text-sm font-['Inter'] text-[#E8E6E1] font-medium">
               No new records this week — yet
             </p>
-            <p className="text-xs font-['Inter'] text-[#5A6872] mt-0.5">
+            <p className="text-xs font-['Inter'] text-[#8E8B85] mt-0.5">
               PRs come in waves. Keep training consistently and the breakthrough will come.
             </p>
           </div>
@@ -91,21 +91,21 @@ export function PRStreakTracker({ prData }: PRStreakTrackerProps) {
         .pr-swipe-container::-webkit-scrollbar { display: none; }
       `}</style>
       <div
-        className="bg-[#2A3A47] border border-[#3DD598]/20 rounded-xl p-4"
+        className="bg-[#131316] border border-[#3DD598]/20 rounded-md p-4"
         style={hasRecentPR ? { animation: 'prGlow 2s ease-in-out 3' } : undefined}
       >
         {/* Header row */}
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-[#3DD598]/10 flex items-center justify-center flex-shrink-0">
+            <div className="w-8 h-8 rounded-md bg-[#3DD598]/10 flex items-center justify-center flex-shrink-0">
               <Trophy className="w-4 h-4 text-[#3DD598]" />
             </div>
-            <span className="font-['Rajdhani'] text-base font-semibold text-[#ECE8E1] uppercase tracking-wide">
+            <span className="font-['Rajdhani'] text-base font-semibold text-[#E8E6E1] uppercase tracking-wide">
               PR Streak
             </span>
           </div>
           {prData.streakDays >= 2 && (
-            <span className="flex items-center gap-1 text-xs font-['Inter'] text-[#FF4655] font-semibold">
+            <span className="flex items-center gap-1 text-xs font-['Inter'] text-[#FF2A2A] font-semibold">
               {prData.streakDays}-day
               <Flame className="w-3.5 h-3.5" />
             </span>
@@ -134,7 +134,7 @@ export function PRStreakTracker({ prData }: PRStreakTrackerProps) {
               <div
                 key={i}
                 className={`w-1.5 h-1.5 rounded-full transition-colors ${
-                  i === activePage ? 'bg-[#3DD598]' : 'bg-[#5A6872]/40'
+                  i === activePage ? 'bg-[#3DD598]' : 'bg-[#8E8B85]/40'
                 }`}
               />
             ))}
@@ -152,7 +152,7 @@ export function PRStreakTracker({ prData }: PRStreakTrackerProps) {
         <PRDots prDaysInWindow={prData.prDaysInWindow} />
 
         {/* Summary line */}
-        <p className="text-xs font-['Inter'] text-[#5A6872] mt-3">
+        <p className="text-xs font-['Inter'] text-[#8E8B85] mt-3">
           {prData.totalPRs} PR{prData.totalPRs !== 1 ? 's' : ''} this week
           {prData.bestImprovement && !prData.bestImprovement.isFirstPlay && (
             <>
@@ -196,11 +196,11 @@ function PRDots({ prDaysInWindow }: { prDaysInWindow: Set<string> }) {
               day.hasPR
                 ? 'bg-[#3DD598] shadow-sm shadow-[#3DD598]/40'
                 : day.isToday
-                ? 'bg-[#2A3A47] border border-[#53CADC]'
-                : 'bg-[#1C2B36]'
+                ? 'bg-[#131316] border border-[#53CADC]'
+                : 'bg-[#18181B]'
             }`}
           />
-          <span className="text-[10px] text-[#5A6872] font-['Inter'] leading-none">
+          <span className="text-[10px] text-[#8E8B85] font-['Inter'] leading-none">
             {day.dayName}
           </span>
         </div>
@@ -214,14 +214,14 @@ function PRDots({ prDaysInWindow }: { prDaysInWindow: Set<string> }) {
 function PRCard({ pr }: { pr: { scenarioName: string; improvement: number; isFirstPlay: boolean; previousBest: number; newScore: number } }) {
   return (
     <div
-      className="rounded-lg px-2.5 py-2 flex-1 min-w-0"
+      className="rounded-md px-2.5 py-2 flex-1 min-w-0"
       style={{
         borderLeft: '2px solid #3DD598',
         backgroundColor: 'rgba(61, 213, 152, 0.05)',
       }}
     >
       <div className="flex items-center justify-between gap-1">
-        <span className="font-['Inter'] text-xs text-[#ECE8E1] truncate min-w-0">
+        <span className="font-['Inter'] text-xs text-[#E8E6E1] truncate min-w-0">
           {pr.scenarioName}
         </span>
         {!pr.isFirstPlay && (
@@ -237,10 +237,10 @@ function PRCard({ pr }: { pr: { scenarioName: string; improvement: number; isFir
           </span>
         ) : (
           <>
-            <span className="font-['JetBrains_Mono'] text-[11px] text-[#5A6872]">
+            <span className="font-['JetBrains_Mono'] text-[11px] text-[#8E8B85]">
               {Math.round(pr.previousBest).toLocaleString()}
             </span>
-            <span className="text-[#5A6872] text-[11px]">{'\u{2192}'}</span>
+            <span className="text-[#8E8B85] text-[11px]">{'\u{2192}'}</span>
             <span className="font-['JetBrains_Mono'] text-[11px] text-[#3DD598] font-semibold">
               {Math.round(pr.newScore).toLocaleString()}
             </span>

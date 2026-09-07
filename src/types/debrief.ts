@@ -31,6 +31,8 @@ export interface ScenarioNoteSnapshot {
   scenario_name: string;
   notes_text: string;
   completed_at: string | null;
+  /** How the player classified the note. Null renders a neutral tick. */
+  note_kind: 'mechanics' | 'mindset' | 'positive' | null;
 }
 
 export interface SessionDebrief {
@@ -39,6 +41,8 @@ export interface SessionDebrief {
   freeformText: string | null;
   emojiReaction: string | null;
   sessionQuality: number | null;
+  /** "Carry into today" — optional, captured on the rating screen (Phase 2). */
+  nextIntent: string | null;
   scenarioNotes?: ScenarioNoteSnapshot[];
 }
 
@@ -67,4 +71,21 @@ export interface PRStreakData {
   prDaysInWindow: Set<string>; // set of date strings (YYYY-MM-DD) with PRs
   isLoading: boolean;
   isEmpty: boolean;            // true if no debriefs exist at all (new user)
+}
+
+// ─── Vault tips (synced from Obsidian by scripts/sync-vault.mjs) ───
+
+export interface VaultTip {
+  id: string;
+  user_id: string;
+  /** Vault-relative path, e.g. "Aim Training/Techniques/Flick deceleration.md" */
+  source_path: string;
+  title: string;
+  body: string;
+  drill: string | null;
+  /** Debrief theme ids this tip answers. */
+  themes: string[];
+  tags: string[];
+  kind: 'mechanics' | 'mindset' | null;
+  updated_at: string;
 }

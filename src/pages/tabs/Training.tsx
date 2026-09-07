@@ -20,6 +20,7 @@ import { PlaylistIntroduction } from '@/components/training/PlaylistIntroduction
 import { VerifiedBadge } from '@/components/training/VerifiedBadge';
 import { VerifiedShieldIcon } from '@/components/icons/VerifiedShieldIcon';
 import { useScenarioNotes } from '@/hooks/useScenarioNotes';
+import type { NoteKind } from '@/hooks/useScenarioNotes';
 import { ScenarioNoteEditor } from '@/components/training/ScenarioNoteEditor';
 
 
@@ -810,6 +811,8 @@ function ActiveProgramView({
     getNote,
     updateNote,
     hasNote,
+    getNoteKind,
+    updateNoteKind,
     saving: noteSaving,
   } = useScenarioNotes(user?.id, program.id);
 
@@ -1156,6 +1159,8 @@ function ActiveProgramView({
                           noteExpanded={expandedNoteScenario === scenario.scenarioName}
                           onToggleNote={() => toggleNoteEditor(scenario.scenarioName)}
                           onUpdateNote={updateNote}
+                          noteKind={getNoteKind(scenario.scenarioName)}
+                          onUpdateNoteKind={updateNoteKind}
                           noteSaving={noteSaving}
                         />
                       );
@@ -1187,6 +1192,8 @@ function ActiveProgramView({
                           noteExpanded={expandedNoteScenario === scenario.scenarioName}
                           onToggleNote={() => toggleNoteEditor(scenario.scenarioName)}
                           onUpdateNote={updateNote}
+                          noteKind={getNoteKind(scenario.scenarioName)}
+                          onUpdateNoteKind={updateNoteKind}
                           noteSaving={noteSaving}
                         />
                       );
@@ -1454,6 +1461,8 @@ function ScenarioRow({
   noteExpanded,
   onToggleNote,
   onUpdateNote,
+  noteKind,
+  onUpdateNoteKind,
   noteSaving,
 }: {
   scenarioName: string;
@@ -1467,6 +1476,8 @@ function ScenarioRow({
   noteExpanded: boolean;
   onToggleNote: () => void;
   onUpdateNote: (scenarioName: string, text: string) => void;
+  noteKind: NoteKind | null;
+  onUpdateNoteKind: (scenarioName: string, kind: NoteKind | null) => void;
   noteSaving: boolean;
 }) {
   const score = scoreInfo?.highScore || 0;
@@ -1608,6 +1619,8 @@ function ScenarioRow({
             onUpdate={onUpdateNote}
             saving={noteSaving}
             variant="list"
+            noteKind={noteKind}
+            onUpdateKind={onUpdateNoteKind}
           />
         </div>
       )}
@@ -1627,6 +1640,8 @@ function ScenarioCard({
   noteExpanded,
   onToggleNote,
   onUpdateNote,
+  noteKind,
+  onUpdateNoteKind,
   noteSaving,
 }: {
   scenarioName: string;
@@ -1640,6 +1655,8 @@ function ScenarioCard({
   noteExpanded: boolean;
   onToggleNote: () => void;
   onUpdateNote: (scenarioName: string, text: string) => void;
+  noteKind: NoteKind | null;
+  onUpdateNoteKind: (scenarioName: string, kind: NoteKind | null) => void;
   noteSaving: boolean;
 }) {
   const aimColor = getAimColor(aimType);
@@ -1761,6 +1778,8 @@ function ScenarioCard({
           onUpdate={onUpdateNote}
           saving={noteSaving}
           variant="card"
+          noteKind={noteKind}
+          onUpdateKind={onUpdateNoteKind}
         />
       )}
 

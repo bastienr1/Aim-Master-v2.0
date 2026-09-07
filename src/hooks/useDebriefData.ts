@@ -35,7 +35,7 @@ export function useDebriefData() {
       if (activeProgramId) {
         const { data: notesData } = await supabase
           .from('program_scenario_completions')
-          .select('scenario_name, notes, completed_at')
+          .select('scenario_name, notes, completed_at, note_kind')
           .eq('program_id', activeProgramId)
           .eq('user_id', user.id)
           .not('notes', 'is', null)
@@ -46,6 +46,7 @@ export function useDebriefData() {
             scenario_name: row.scenario_name,
             notes_text: row.notes,
             completed_at: row.completed_at || null,
+            note_kind: row.note_kind || null,
           }));
         }
       }
@@ -67,6 +68,7 @@ export function useDebriefData() {
           freeform_text: debrief.freeformText,
           emoji_reaction: debrief.emojiReaction,
           session_quality: debrief.sessionQuality,
+          next_intent: debrief.nextIntent,
           checkin_id: recentCheckin?.[0]?.id || null,
           kovaaks_play_ids: session.plays.map((p) => p.leaderboardId).filter(Boolean),
           scenario_notes: scenarioNotes,

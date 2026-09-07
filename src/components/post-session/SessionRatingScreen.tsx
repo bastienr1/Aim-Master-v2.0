@@ -3,14 +3,17 @@ import { useDebriefData } from '@/hooks/useDebriefData';
 import { SESSION_QUALITY_LABELS } from '@/constants/debrief-config';
 import type { DebriefInsight } from '@/types/debrief';
 
+const NEXT_INTENT_MAX = 140;
+
 interface SessionRatingScreenProps {
   debriefCount: number;
-  onComplete: (quality: number) => void;
+  onComplete: (quality: number, nextIntent: string | null) => void;
 }
 
 export function SessionRatingScreen({ debriefCount, onComplete }: SessionRatingScreenProps) {
   const { getInsight } = useDebriefData();
   const [quality, setQuality] = useState<number | null>(null);
+  const [nextIntent, setNextIntent] = useState('');
   const [insight, setInsight] = useState<DebriefInsight | null>(null);
 
   useEffect(() => {
@@ -80,6 +83,40 @@ export function SessionRatingScreen({ debriefCount, onComplete }: SessionRatingS
         })}
       </div>
 
+      {/* Carry into today — optional, pre-fills the next pre-training check-in */}
+      <div className="space-y-2">
+        <div className="flex items-baseline justify-between">
+          <label
+            htmlFor="next-intent"
+            className="text-[11px] font-['Inter'] text-[#5A6872] uppercase tracking-wider"
+          >
+            Carry into today
+          </label>
+          <span className="text-[10px] font-['JetBrains_Mono'] text-[#5A6872]">
+            {nextIntent.length > 0 ? `${nextIntent.length}/${NEXT_INTENT_MAX}` : 'Optional'}
+          </span>
+        </div>
+        <input
+          id="next-intent"
+          type="text"
+          value={nextIntent}
+          onChange={(e) => setNextIntent(e.target.value.slice(0, NEXT_INTENT_MAX))}
+          maxLength={NEXT_INTENT_MAX}
+          placeholder={'One thing to try next session…'}
+          className="w-full rounded-lg px-3 py-2.5 text-sm font-['Inter'] text-[#E8E6E1] placeholder:text-[#5A6872] outline-none transition-all duration-150"
+          style={{
+            backgroundColor: 'rgba(255, 255, 255, 0.05)',
+            border: '1.5px solid rgba(255, 255, 255, 0.1)',
+          }}
+          onFocus={(e) => {
+            e.currentTarget.style.borderColor = '#FF4655';
+          }}
+          onBlur={(e) => {
+            e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.1)';
+          }}
+        />
+      </div>
+
       {/* Insight card */}
       {insight && (
         <div
@@ -97,7 +134,7 @@ export function SessionRatingScreen({ debriefCount, onComplete }: SessionRatingS
 
       {/* Complete button */}
       <button
-        onClick={() => canComplete && onComplete(quality!)}
+        onClick={() => canComplete && onComplete(quality!, nextIntent.trim() || null)}
         disabled={!canComplete}
         className="w-full rounded-lg py-3 text-sm font-semibold font-['Inter'] text-white transition-all duration-200"
         style={{

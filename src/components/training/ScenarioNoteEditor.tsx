@@ -1,4 +1,13 @@
 import { useState, useRef, useEffect } from 'react';
+import { THEME_KIND_COLOR } from '@/constants/debrief-config';
+import type { NoteKind } from '@/hooks/useScenarioNotes';
+
+/** Order and wording of the classification control. Colours come from the theme kinds. */
+const NOTE_KIND_OPTIONS: { value: NoteKind; label: string }[] = [
+  { value: 'mechanics', label: 'Mechanics' },
+  { value: 'mindset', label: 'Mindset' },
+  { value: 'positive', label: 'Went well' },
+];
 
 interface ScenarioNoteEditorProps {
   scenarioName: string;
@@ -6,6 +15,8 @@ interface ScenarioNoteEditorProps {
   onUpdate: (scenarioName: string, text: string) => void;
   saving: boolean;
   variant: 'card' | 'list';
+  noteKind: NoteKind | null;
+  onUpdateKind: (scenarioName: string, kind: NoteKind | null) => void;
 }
 
 export function ScenarioNoteEditor({
@@ -14,6 +25,8 @@ export function ScenarioNoteEditor({
   onUpdate,
   saving,
   variant,
+  noteKind,
+  onUpdateKind,
 }: ScenarioNoteEditorProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [localValue, setLocalValue] = useState(note);
@@ -96,6 +109,40 @@ export function ScenarioNoteEditor({
             saving...
           </span>
         )}
+      </div>
+
+      <div className="flex items-center gap-1.5 mb-2">
+        {NOTE_KIND_OPTIONS.map(({ value, label }) => {
+          const isActive = noteKind === value;
+          const color = THEME_KIND_COLOR[value];
+          return (
+            <button
+              key={value}
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onUpdateKind(scenarioName, isActive ? null : value);
+              }}
+              aria-pressed={isActive}
+              style={{
+                fontFamily: "'Inter', sans-serif",
+                fontSize: '10px',
+                fontWeight: 500,
+                textTransform: 'uppercase',
+                letterSpacing: '0.5px',
+                padding: '3px 9px',
+                borderRadius: '999px',
+                cursor: 'pointer',
+                background: isActive ? `${color}1F` : 'rgba(255, 255, 255, 0.04)',
+                border: `1px solid ${isActive ? color : 'rgba(255, 255, 255, 0.10)'}`,
+                color: isActive ? color : '#5A6872',
+                transition: 'all 150ms ease',
+              }}
+            >
+              {label}
+            </button>
+          );
+        })}
       </div>
 
       <textarea
