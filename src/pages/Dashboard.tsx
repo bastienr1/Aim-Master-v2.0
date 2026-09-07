@@ -17,9 +17,6 @@ import { PreTrainingCheckin } from '@/components/mental-game/PreTrainingCheckin'
 import { BrandBanner } from '@/components/layout/BrandBanner';
 import { SURFACE, TEXT, FONT, RED } from '@/constants/theme';
 import { usePreTrainingGate } from '@/hooks/usePreTrainingGate';
-import { useCheckinStreak } from '@/hooks/useCheckinStreak';
-import { CheckinButton } from '@/components/dashboard/CheckinButton';
-import { CheckinStreakCard } from '@/components/dashboard/CheckinStreakCard';
 import { PostSessionDebrief } from '@/components/post-session/PostSessionDebrief';
 import { WelcomeBackModal } from '@/components/post-session/WelcomeBackModal';
 import { usePostSessionGate } from '@/hooks/usePostSessionGate';
@@ -59,7 +56,6 @@ export default function Dashboard() {
   const { showCheckin, triggerCheckin, dismissCheckin, completeCheckin } = usePreTrainingGate(false);
 
   // Streak data for the dashboard
-  const streak = useCheckinStreak();
 
   // Post-session debrief gate and session detection
   const { showDebrief, triggerDebrief, dismissDebrief, completeDebrief, forceShowDebrief } = usePostSessionGate();
@@ -241,7 +237,6 @@ export default function Dashboard() {
           </span>
         </div>
         <div className="flex items-center gap-2">
-          <CheckinButton onClick={triggerCheckin} />
           <button
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
             className="text-[#9CA8B3] hover:text-white transition-colors"
@@ -359,11 +354,6 @@ export default function Dashboard() {
           })}
         </nav>
 
-        {/* Check-in */}
-        <div className="flex justify-center" style={{ padding: '8px 6px' }}>
-          <CheckinButton onClick={triggerCheckin} />
-        </div>
-
         {/* Motto */}
         <div className="flex flex-col items-center" style={{ padding: '10px 0 8px' }}>
           <span aria-hidden style={{ width: '22px', height: '2px', background: RED, marginBottom: '8px' }} />
@@ -432,10 +422,6 @@ export default function Dashboard() {
         </div>
         <div style={{ display: activeTab === 'home' ? 'block' : 'none' }}>
           <Home profile={profile} onNavigate={handleNavigate} onRefresh={loadProfile} onTriggerCheckin={triggerCheckin} />
-          {/* Streak card injected at the top of the home tab content area */}
-          <div className="px-6 lg:px-8 -mt-4 mb-6">
-            <CheckinStreakCard streak={streak} />
-          </div>
         </div>
         {/* CHANGE 3 — Pass pendingIntent and onClearIntent to Training */}
         <div style={{ display: activeTab === 'training' ? 'block' : 'none' }}>
