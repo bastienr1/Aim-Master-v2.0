@@ -7,7 +7,6 @@ import {
 import { ProfileOnboarding } from '@/components/onboarding/ProfileOnboarding';
 
 // New Battle Stats components
-import { MentalGameBar } from '@/components/dashboard/MentalGameBar';
 import { ActiveMissionCard } from '@/components/dashboard/ActiveMissionCard';
 import { BandLabel } from '@/components/dashboard/BandLabel';
 import { SignalsRow } from '@/components/dashboard/SignalsRow';
@@ -15,6 +14,7 @@ import { CoachLine } from '@/components/dashboard/CoachLine';
 import { LogbookCard } from '@/components/dashboard/LogbookCard';
 import { PlaybookCard } from '@/components/dashboard/PlaybookCard';
 import { StartTrainingBar } from '@/components/dashboard/StartTrainingBar';
+import { CheckinBar } from '@/components/dashboard/CheckinBar';
 import { usePRDetection } from '@/hooks/usePRDetection';
 import { useBenchmarkRadarData, BenchmarkScenarioRow } from '@/hooks/useBenchmarkRadarData';
 import { useGoals } from '@/hooks/useGoals';
@@ -462,13 +462,6 @@ export function Home({ profile, onNavigate, onRefresh, onTriggerCheckin }: HomeP
         </div>
       )}
 
-      {/* Mental Game Bar */}
-      <MentalGameBar
-        streakDays={profile?.checkin_streak || 0}
-        onCheckin={() => onTriggerCheckin?.()}
-        onNavigate={onNavigate}
-      />
-
       <BandLabel>Context</BandLabel>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 items-stretch mb-6">
         <div className="h-full">
@@ -499,8 +492,12 @@ export function Home({ profile, onNavigate, onRefresh, onTriggerCheckin }: HomeP
         </div>
       </div>
 
-      {/* Section 4: Start training */}
-      <div className="mb-6">
+      {/* Bottom actions — check-in, then the page's single primary */}
+      <div className="flex flex-col gap-2 mb-6">
+        <CheckinBar
+          streakDays={profile?.checkin_streak || 0}
+          onClick={() => onTriggerCheckin?.()}
+        />
         <StartTrainingBar onStartTraining={goToTraining} />
       </div>
 
