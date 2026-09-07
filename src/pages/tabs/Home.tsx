@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
-import { relativeTime, getCategoryColor } from '@/lib/time';
+import { relativeTime } from '@/lib/time';
 import {
   RefreshCw, Crosshair,
   TrendingUp, TrendingDown, Minus, ArrowRight, Brain,
@@ -13,16 +13,18 @@ import {
 import { ProfileOnboarding } from '@/components/onboarding/ProfileOnboarding';
 
 // New Battle Stats components
-import { SkillRadar } from '@/components/dashboard/SkillRadar';
-import { MissionBriefingV2 } from '@/components/dashboard/MissionBriefingV2';
 import { MentalGameBar } from '@/components/dashboard/MentalGameBar';
 import { PRStreakTracker } from '@/components/dashboard/PRStreakTracker';
-import { BenchmarkRadar } from '@/components/dashboard/BenchmarkRadar';
 import { GoalRoadmap } from '@/components/dashboard/GoalRoadmap';
+import { LastSessionCard } from '@/components/dashboard/LastSessionCard';
+import { VaultTipCard } from '@/components/dashboard/VaultTipCard';
+import { StartTrainingBar } from '@/components/dashboard/StartTrainingBar';
 import { usePRDetection } from '@/hooks/usePRDetection';
 import { useBenchmarkRadarData, BenchmarkScenarioRow } from '@/hooks/useBenchmarkRadarData';
 import { useGoals } from '@/hooks/useGoals';
 import { useGoalStrategy } from '@/hooks/useGoalStrategy';
+import { useLastDebrief } from '@/hooks/useLastDebrief';
+import { useVaultTip } from '@/hooks/useVaultTip';
 import { getMomentumContext } from '@/utils/momentum-context';
 
 interface HomeProps {
@@ -71,20 +73,19 @@ export function Home({ profile, onNavigate, onRefresh, onTriggerCheckin }: HomeP
   const [errorMomentum, setErrorMomentum] = useState(false);
 
 
-  // Charts
-  const [chartData, setChartData] = useState<any>(null);
-  const [loadingCharts, setLoadingCharts] = useState(true);
-  const [errorCharts, setErrorCharts] = useState(false);
-
-  // Coach
-  const [coachData, setCoachData] = useState<any>(null);
-  const [loadingCoach, setLoadingCoach] = useState(true);
-  const [errorCoach, setErrorCoach] = useState(false);
-
   // Benchmark Radar
   const [benchmarkData, setBenchmarkData] = useState<BenchmarkScenarioRow[] | null>(null);
 
   const [syncing, setSyncing] = useState(false);
+
+  // Journal sources for the Last session + vault tip cards
+  const {
+    debrief: lastDebrief,
+    loading: loadingDebrief,
+    reload: reloadDebrief,
+    updateNextIntent,
+  } = useLastDebrief();
+  const vaultTip = useVaultTip(lastDebrief);
 
   const isConnected = !!syncData?.username;
 
@@ -174,106 +175,6 @@ export function Home({ profile, onNavigate, onRefresh, onTriggerCheckin }: HomeP
   }, [user]);
 
 
-  const loadCharts = useCallback(async () => {
-    if (!user) return;
-    setLoadingCharts(true);
-    setErrorCharts(false);
-    try {
-      const { data: statsData, error: statsErr } = await supabase
-        .from('user_scenario_stats')
-        .select('scenario_id, scenarios(category)')
-        .eq('user_id', user.id);
-      if (statsErr) throw statsErr;
-
-      const catCounts: Record<string, number> = {};
-      (statsData || []).forEach((s: any) => {
-        const cat = (s.scenarios as any)?.category || 'Other';
-        catCounts[cat] = (catCounts[cat] || 0) + 1;
-      });
-      const distribution = Object.entries(catCounts).map(([name, value]) => ({
-        name,
-        value,
-        color: getCategoryColor(name),
-      }));
-
-      setChartData({ distribution });
-    } catch {
-      setErrorCharts(true);
-    } finally {
-      setLoadingCharts(false);
-    }
-  }, [user]);
-
-  const loadCoach = useCallback(async () => {
-    if (!user) return;
-    setLoadingCoach(true);
-    setErrorCoach(false);
-    try {
-      const { data: lastSession } = await supabase
-        .from('score_history')
-        .select('session_date')
-        .eq('user_id', user.id)
-        .order('session_date', { ascending: false })
-        .limit(1);
-
-      const lastDate = lastSession?.[0]?.session_date;
-      const daysSinceLast = lastDate
-        ? Math.floor((Date.now() - new Date(lastDate).getTime()) / (1000 * 60 * 60 * 24))
-        : 999;
-
-      const { data: catStats } = await supabase
-        .from('user_scenario_stats')
-        .select('high_score, total_attempts, scenarios(category, name)')
-        .eq('user_id', user.id);
-
-      const catAvgs: Record<string, { total: number; count: number }> = {};
-      (catStats || []).forEach((s: any) => {
-        const cat = (s.scenarios as any)?.category || 'Other';
-        if (!catAvgs[cat]) catAvgs[cat] = { total: 0, count: 0 };
-        catAvgs[cat].total += Number(s.high_score) || 0;
-        catAvgs[cat].count += 1;
-      });
-
-      const catAverages = Object.entries(catAvgs).map(([cat, v]) => ({
-        category: cat,
-        avg: v.count > 0 ? v.total / v.count : 0,
-      }));
-
-      let weakest = catAverages.length > 0
-        ? catAverages.reduce((a, b) => (a.avg < b.avg ? a : b))
-        : null;
-      let strongest = catAverages.length > 0
-        ? catAverages.reduce((a, b) => (a.avg > b.avg ? a : b))
-        : null;
-
-      let suggestedScenario: string | null = null;
-      if (weakest) {
-        const weakCatStats = (catStats || []).filter(
-          (s: any) => (s.scenarios as any)?.category === weakest!.category
-        );
-        if (weakCatStats.length > 0) {
-          const least = weakCatStats.reduce((a: any, b: any) =>
-            (a.total_attempts || 0) < (b.total_attempts || 0) ? a : b
-          );
-          suggestedScenario = (least.scenarios as any)?.name || null;
-        }
-      }
-
-      setCoachData({
-        daysSinceLast,
-        weakest,
-        strongest,
-        suggestedScenario,
-        totalStats: catStats?.length || 0,
-        catAverages,
-      });
-    } catch {
-      setErrorCoach(true);
-    } finally {
-      setLoadingCoach(false);
-    }
-  }, [user]);
-
   const loadBenchmarkRadar = useCallback(async () => {
     if (!profile?.id) return;
 
@@ -312,12 +213,11 @@ export function Home({ profile, onNavigate, onRefresh, onTriggerCheckin }: HomeP
     await Promise.all([
       loadSyncStatus(),
       loadMomentum(),
-      loadCharts(),
-      loadCoach(),
       loadBenchmarkRadar(),
+      reloadDebrief(),
     ]);
     setSyncing(false);
-  }, [loadSyncStatus, loadMomentum, loadCharts, loadCoach, loadBenchmarkRadar]);
+  }, [loadSyncStatus, loadMomentum, loadBenchmarkRadar, reloadDebrief]);
 
   useEffect(() => {
     if (isProfileComplete) {
@@ -325,16 +225,11 @@ export function Home({ profile, onNavigate, onRefresh, onTriggerCheckin }: HomeP
     }
   }, [loadAllData, isProfileComplete]);
 
-  const getCoachState = () => {
-    if (!coachData || coachData.totalStats < 3) return 'insufficient';
-    if (coachData.daysSinceLast >= 3) return 'inactive';
-    if (momentumData?.state === 'improving') return 'improving';
-    if (momentumData?.state === 'declining') return 'declining';
-    return 'steady';
-  };
-
-  const coachState = getCoachState();
+  // benchmarkData still loads: the radar component is gone from Home, but
+  // GoalRoadmap's strategy is derived from these axes.
   const radarResult = useBenchmarkRadarData(benchmarkData);
+
+  const goToTraining = useCallback(() => onNavigate('training'), [onNavigate]);
 
   // Goal-aware strategy
   const goalStrategy = useGoalStrategy(primaryGoal, radarResult.axes);
@@ -646,46 +541,32 @@ export function Home({ profile, onNavigate, onRefresh, onTriggerCheckin }: HomeP
         onNavigate={onNavigate}
       />
 
-      {/* Section 3: Mission Briefing + Battle Stats */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-        {/* Mission Briefing */}
-        <div>
-          {loadingCoach || loadingMomentum ? (
-            <SkeletonBlock className="h-96" />
-          ) : errorCoach ? (
-            <SectionError onRetry={loadCoach} label="coach insights" />
-          ) : (
-            <MissionBriefingV2
-              coachState={coachState}
-              coachData={coachData}
-              momentumData={momentumData}
-              onNavigate={onNavigate}
-              goalStrategy={goalStrategy}
-            />
-          )}
+      {/* Section 3: Last session + vault tip — the journal core */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 mb-6">
+        <div className="lg:col-span-7">
+          <LastSessionCard
+            debrief={lastDebrief}
+            loading={loadingDebrief}
+            onUpdateNextIntent={updateNextIntent}
+            onStartTraining={goToTraining}
+          />
         </div>
+        <div className="lg:col-span-5">
+          <VaultTipCard
+            tip={vaultTip.tip}
+            matchedOn={vaultTip.matchedOn}
+            matchedTheme={vaultTip.matchedTheme}
+            loading={vaultTip.loading}
+            isEmpty={vaultTip.isEmpty}
+            hasMultiple={vaultTip.hasMultiple}
+            onNext={vaultTip.next}
+          />
+        </div>
+      </div>
 
-        {/* Battle Stats Radar */}
-        <div>
-          {loadingCharts ? (
-            <SkeletonBlock className="h-96" />
-          ) : errorCharts ? (
-            <SectionError onRetry={loadCharts} label="charts" />
-          ) : radarResult.hasData ? (
-            <BenchmarkRadar
-              axes={radarResult.axes}
-              overallRank={radarResult.overallRank}
-              overallPercentile={radarResult.overallPercentile}
-              strongest={radarResult.strongest}
-              weakest={radarResult.weakest}
-            />
-          ) : (
-            <SkillRadar
-              distribution={chartData?.distribution}
-              categoryScores={coachData?.catAverages}
-            />
-          )}
-        </div>
+      {/* Section 4: Start training */}
+      <div className="mb-6">
+        <StartTrainingBar onStartTraining={goToTraining} />
       </div>
 
     </div>
