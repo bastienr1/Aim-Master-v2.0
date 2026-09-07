@@ -4,3 +4,8 @@
 .vercel
 
 node_modules/
+
+# Build output — Vercel runs `npm run build` from source, so this never
+# needs to be committed.
+dist/
+*.tsbuildinfo
