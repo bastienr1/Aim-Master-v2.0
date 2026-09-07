@@ -13,7 +13,7 @@ import { BandLabel } from '@/components/dashboard/BandLabel';
 import { SignalsRow } from '@/components/dashboard/SignalsRow';
 import { CoachLine } from '@/components/dashboard/CoachLine';
 import { LogbookCard } from '@/components/dashboard/LogbookCard';
-import { VaultTipCard } from '@/components/dashboard/VaultTipCard';
+import { PlaybookCard } from '@/components/dashboard/PlaybookCard';
 import { StartTrainingBar } from '@/components/dashboard/StartTrainingBar';
 import { usePRDetection } from '@/hooks/usePRDetection';
 import { useBenchmarkRadarData, BenchmarkScenarioRow } from '@/hooks/useBenchmarkRadarData';
@@ -469,9 +469,9 @@ export function Home({ profile, onNavigate, onRefresh, onTriggerCheckin }: HomeP
         onNavigate={onNavigate}
       />
 
-      {/* Section 3: Last session + vault tip — the journal core */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 mb-6">
-        <div className="lg:col-span-7">
+      <BandLabel>Context</BandLabel>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 items-stretch mb-6">
+        <div className="h-full">
           <LogbookCard
             current={history.current}
             index={history.index}
@@ -486,8 +486,8 @@ export function Home({ profile, onNavigate, onRefresh, onTriggerCheckin }: HomeP
             onNavigate={onNavigate}
           />
         </div>
-        <div className="lg:col-span-5">
-          <VaultTipCard
+        <div className="h-full">
+          <PlaybookCard
             tip={vaultTip.tip}
             matchedOn={vaultTip.matchedOn}
             matchedTheme={vaultTip.matchedTheme}
