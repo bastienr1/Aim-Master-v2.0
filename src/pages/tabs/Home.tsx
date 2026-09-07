@@ -1,21 +1,17 @@
 import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
-import { relativeTime } from '@/lib/time';
 import {
-  RefreshCw, Crosshair,
-  TrendingUp, TrendingDown, Minus, ArrowRight, Brain,
-  AlertCircle, Link2
+  Crosshair, ArrowRight, Brain, AlertCircle, Link2, TrendingUp
 } from 'lucide-react';
-import {
-  AreaChart, Area, ResponsiveContainer
-} from 'recharts';
 import { ProfileOnboarding } from '@/components/onboarding/ProfileOnboarding';
 
 // New Battle Stats components
 import { MentalGameBar } from '@/components/dashboard/MentalGameBar';
-import { PRStreakTracker } from '@/components/dashboard/PRStreakTracker';
 import { GoalRoadmap } from '@/components/dashboard/GoalRoadmap';
+import { BandLabel } from '@/components/dashboard/BandLabel';
+import { SignalsRow } from '@/components/dashboard/SignalsRow';
+import { CoachLine } from '@/components/dashboard/CoachLine';
 import { LastSessionCard } from '@/components/dashboard/LastSessionCard';
 import { VaultTipCard } from '@/components/dashboard/VaultTipCard';
 import { StartTrainingBar } from '@/components/dashboard/StartTrainingBar';
@@ -26,7 +22,7 @@ import { useGoalStrategy } from '@/hooks/useGoalStrategy';
 import { useLastDebrief } from '@/hooks/useLastDebrief';
 import { useVaultTip } from '@/hooks/useVaultTip';
 import { getMomentumContext } from '@/utils/momentum-context';
-import { SURFACE, TEXT, RADIUS, RED } from '@/constants/theme';
+import { SURFACE, TEXT, RADIUS, RED, FONT } from '@/constants/theme';
 
 interface HomeProps {
   profile: any;
@@ -245,22 +241,6 @@ export function Home({ profile, onNavigate, onRefresh, onTriggerCheckin }: HomeP
   const goalStrategy = useGoalStrategy(primaryGoal, radarResult.axes);
   const momentumContext = getMomentumContext(momentumData?.state, momentumData?.delta);
 
-  const getMomentumConfig = () => {
-    if (!momentumData) return { color: '#B9B6AF', icon: Minus, label: 'Loading...' };
-    switch (momentumData.state) {
-      case 'improving':
-        return { color: '#3DD598', icon: TrendingUp, label: 'Improving' };
-      case 'declining':
-        return { color: '#FFCA3A', icon: TrendingDown, label: 'Declining' };
-      case 'steady':
-        return { color: '#B9B6AF', icon: Minus, label: 'Steady' };
-      default:
-        return { color: '#53CADC', icon: Minus, label: 'Gathering Data' };
-    }
-  };
-
-  const momentumConfig = getMomentumConfig();
-
   const displayName = profile?.username || 'Trainee';
 
   // =========================================================
@@ -439,19 +419,19 @@ export function Home({ profile, onNavigate, onRefresh, onTriggerCheckin }: HomeP
           >
             Welcome back, <span style={{ color: RED }}>{displayName}</span>
           </h1>
-          <p className="text-sm font-['Inter'] mt-0.5" style={{ color: TEXT.label }}>
-            Last synced: {relativeTime(syncData?.last_synced_at)}
+          <p
+            className="mt-1"
+            style={{
+              fontFamily: FONT.mono,
+              fontSize: '11px',
+              letterSpacing: '0.14em',
+              textTransform: 'uppercase',
+              color: TEXT.label,
+            }}
+          >
+            {new Date().toLocaleDateString('en-GB', { weekday: 'short', day: '2-digit', month: 'short' })}
           </p>
         </div>
-        <button
-          onClick={loadAllData}
-          disabled={syncing}
-          className="px-5 py-2.5 font-semibold font-['Inter'] text-sm transition-all inline-flex items-center gap-2 disabled:opacity-50 self-start"
-          style={{ background: RED, color: '#FFFFFF', borderRadius: RADIUS.card, border: 'none' }}
-        >
-          <RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
-          Sync Now
-        </button>
       </div>
 
       {/* Goal Roadmap — Hero position */}
@@ -463,88 +443,26 @@ export function Home({ profile, onNavigate, onRefresh, onTriggerCheckin }: HomeP
         />
       </div>
 
-      {/* Section 1: Performance Momentum + PR Streak — side by side */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-        {/* Performance Momentum */}
-        <div>
-          {loadingMomentum ? (
-            <SkeletonBlock className="h-48" />
-          ) : errorMomentum ? (
-            <SectionError onRetry={loadMomentum} label="momentum" />
-          ) : (
-            <div
-              className="p-5 h-full transition-all"
-              style={{
-                borderRadius: RADIUS.card,
-                borderStyle: 'solid',
-                borderWidth: '1px 1px 1px 4px',
-                borderColor: `${SURFACE.cardBorder} ${SURFACE.cardBorder} ${SURFACE.cardBorder} ${momentumConfig.color}`,
-                background: `linear-gradient(90deg, ${momentumConfig.color}0F, ${SURFACE.card} 60%)`,
-              }}
-            >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div
-                    className="w-10 h-10 flex items-center justify-center"
-                    style={{ backgroundColor: SURFACE.iconBox, borderRadius: RADIUS.card }}
-                  >
-                    <momentumConfig.icon className="w-5 h-5" style={{ color: momentumConfig.color }} />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h3 className="font-['Rajdhani'] text-[15px] font-semibold" style={{ color: TEXT.primary }}>
-                        Performance Momentum
-                      </h3>
-                      <span
-                        className="text-[10px] font-semibold font-['Inter'] px-2 py-0.5"
-                        style={{
-                          backgroundColor: SURFACE.chip,
-                          border: `1px solid ${momentumConfig.color}40`,
-                          borderRadius: RADIUS.chip,
-                          color: momentumConfig.color,
-                        }}
-                      >
-                        {momentumConfig.label}
-                      </span>
-                    </div>
-                    <p className="text-sm font-['JetBrains_Mono'] mt-1 font-bold" style={{ color: momentumConfig.color }}>
-                      {momentumData.state === 'insufficient'
-                        ? 'Gathering data...'
-                        : `${momentumData.delta > 0 ? '+' : ''}${momentumData.delta}%`}
-                    </p>
-                  </div>
-                </div>
-                {momentumData.sparkline.length > 2 && (
-                  <div className="hidden md:block w-24 h-[40px]">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={momentumData.sparkline}>
-                        <defs>
-                          <linearGradient id="sparkGrad" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="0%" stopColor={momentumConfig.color} stopOpacity={0.3} />
-                            <stop offset="100%" stopColor={momentumConfig.color} stopOpacity={0} />
-                          </linearGradient>
-                        </defs>
-                        <Area type="monotone" dataKey="value" stroke={momentumConfig.color} strokeWidth={2} fill="url(#sparkGrad)" dot={false} />
-                      </AreaChart>
-                    </ResponsiveContainer>
-                  </div>
-                )}
-              </div>
-              {momentumData.state !== 'insufficient' && (
-                <div className="mt-3 pt-3 space-y-0.5" style={{ borderTop: `1px solid ${SURFACE.insetBorder}` }}>
-                  <p className="text-[11px] font-['Inter']" style={{ color: TEXT.label }}>{momentumContext.line1}</p>
-                  <p className="text-[11px] font-['Inter']" style={{ color: TEXT.label }}>{momentumContext.line2}</p>
-                </div>
-              )}
-            </div>
-          )}
+      <BandLabel>Signals</BandLabel>
+      {loadingMomentum ? (
+        <SkeletonBlock className="h-[100px] mb-6" />
+      ) : errorMomentum ? (
+        <div className="mb-6">
+          <SectionError onRetry={loadMomentum} label="momentum" />
         </div>
-
-        {/* PR Streak Tracker */}
-        <div>
-          <PRStreakTracker prData={prData} />
+      ) : (
+        <div className="mb-6">
+          <SignalsRow
+            momentum={momentumData}
+            prData={prData}
+            streakDays={profile?.checkin_streak || 0}
+            lastSyncedAt={syncData?.last_synced_at}
+            syncing={syncing}
+            onSync={loadAllData}
+          />
+          <CoachLine text={momentumData?.state === 'insufficient' ? null : momentumContext.line1} />
         </div>
-      </div>
+      )}
 
       {/* Mental Game Bar */}
       <MentalGameBar
