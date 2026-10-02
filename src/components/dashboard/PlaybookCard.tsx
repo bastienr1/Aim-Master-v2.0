@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { Crosshair, RefreshCw, ArrowRight, ChevronDown } from 'lucide-react';
+import { Crosshair, RefreshCw, ArrowRight, ChevronDown, Play } from 'lucide-react';
 import { SectionTitle } from './SectionTitle';
 import { getThemeConfig, THEME_KIND_COLOR } from '@/constants/debrief-config';
 import { SURFACE, TEXT, RADIUS, FONT, SEMANTIC } from '@/constants/theme';
 import type { VaultTip } from '@/types/debrief';
 import type { TipMatch } from '@/hooks/useVaultTip';
+import type { PlaybookSummary } from '@/types/playbook';
 
 interface PlaybookCardProps {
   tip: VaultTip | null;
@@ -14,6 +15,12 @@ interface PlaybookCardProps {
   isEmpty: boolean;
   hasMultiple: boolean;
   onNext(): void;
+  /** The playbook built from the same vault note as `tip`, when that note has timed chapters. */
+  playbook?: PlaybookSummary | null;
+  /** How many playbooks exist in total — drives the "All playbooks" link. */
+  playbookCount?: number;
+  /** Opens the reader on a playbook, or on the library when called with null. */
+  onOpenPlaybook?(playbookId: string | null): void;
 }
 
 const VAULT_NAME = import.meta.env.VITE_OBSIDIAN_VAULT_NAME as string | undefined;
@@ -33,6 +40,9 @@ export function PlaybookCard({
   isEmpty,
   hasMultiple,
   onNext,
+  playbook = null,
+  playbookCount = 0,
+  onOpenPlaybook,
 }: PlaybookCardProps) {
   const [showMeta, setShowMeta] = useState(false);
 
@@ -186,6 +196,36 @@ export function PlaybookCard({
         </div>
       )}
 
+      {/* The same note as a video playbook: chapters and moments to jump to */}
+      {playbook && onOpenPlaybook && (
+        <button
+          onClick={() => onOpenPlaybook(playbook.id)}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            width: '100%',
+            background: 'transparent',
+            border: `1px solid ${SURFACE.insetBorder}`,
+            borderRadius: RADIUS.card,
+            padding: '10px 12px',
+            cursor: 'pointer',
+            fontFamily: FONT.mono,
+            fontSize: '10.5px',
+            fontWeight: 700,
+            letterSpacing: '0.14em',
+            textTransform: 'uppercase',
+            color: TEXT.primary,
+          }}
+        >
+          <Play size={12} color={kindColor} />
+          Watch the breakdown
+          <span style={{ marginLeft: 'auto', fontWeight: 400, letterSpacing: '0.06em', color: TEXT.label }}>
+            {playbook.chapter_count} chapters · {playbook.moment_count} moments
+          </span>
+        </button>
+      )}
+
       {/* Footer — tags and vault path live behind Read full note, not at rest */}
       <div style={{ marginTop: 'auto', paddingTop: '12px', borderTop: `1px solid ${SURFACE.cardBorder}` }}>
         <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -232,6 +272,26 @@ export function PlaybookCard({
               <ChevronDown size={13} />
             </button>
           </div>
+
+          {playbookCount > 0 && onOpenPlaybook && (
+            <button
+              onClick={() => onOpenPlaybook(null)}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                padding: 0,
+                cursor: 'pointer',
+                fontFamily: FONT.mono,
+                fontSize: '10.5px',
+                fontWeight: 700,
+                letterSpacing: '0.14em',
+                textTransform: 'uppercase',
+                color: TEXT.label,
+              }}
+            >
+              All playbooks · {playbookCount}
+            </button>
+          )}
 
           {hasMultiple && (
             <button
