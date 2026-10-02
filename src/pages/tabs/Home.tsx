@@ -13,6 +13,7 @@ import { SignalsRow } from '@/components/dashboard/SignalsRow';
 import { CoachLine } from '@/components/dashboard/CoachLine';
 import { LogbookCard } from '@/components/dashboard/LogbookCard';
 import { PlaybookCard } from '@/components/dashboard/PlaybookCard';
+import { PlaybookReader } from '@/components/playbook/PlaybookReader';
 import { StartTrainingBar } from '@/components/dashboard/StartTrainingBar';
 import { CheckinBar } from '@/components/dashboard/CheckinBar';
 import { usePRDetection } from '@/hooks/usePRDetection';
@@ -21,6 +22,7 @@ import { useGoals } from '@/hooks/useGoals';
 import { useGoalStrategy } from '@/hooks/useGoalStrategy';
 import { useDebriefHistory } from '@/hooks/useDebriefHistory';
 import { useVaultTip } from '@/hooks/useVaultTip';
+import { usePlaybookIndex } from '@/hooks/usePlaybooks';
 import { getMomentumContext } from '@/utils/momentum-context';
 import { SURFACE, TEXT, RADIUS, RED, FONT } from '@/constants/theme';
 
@@ -89,6 +91,11 @@ export function Home({ profile, onNavigate, onRefresh, onTriggerCheckin }: HomeP
   const { reload: reloadDebrief } = history;
   // The tip is matched against the newest debrief, not the day being browsed.
   const vaultTip = useVaultTip(history.debriefs[0] ?? null);
+
+  // Playbooks: vault notes with timed chapters. A tip and its playbook share a source_path.
+  const { playbooks } = usePlaybookIndex();
+  const tipPlaybook = playbooks.find((p) => p.source_path === vaultTip.tip?.source_path) ?? null;
+  const [reader, setReader] = useState<{ open: boolean; playbookId: string | null }>({ open: false, playbookId: null });
 
   const isConnected = !!syncData?.username;
 
@@ -488,6 +495,9 @@ export function Home({ profile, onNavigate, onRefresh, onTriggerCheckin }: HomeP
             isEmpty={vaultTip.isEmpty}
             hasMultiple={vaultTip.hasMultiple}
             onNext={vaultTip.next}
+            playbook={tipPlaybook}
+            playbookCount={playbooks.length}
+            onOpenPlaybook={(playbookId) => setReader({ open: true, playbookId })}
           />
         </div>
       </div>
@@ -500,6 +510,13 @@ export function Home({ profile, onNavigate, onRefresh, onTriggerCheckin }: HomeP
         />
         <StartTrainingBar onStartTraining={goToTraining} />
       </div>
+
+      <PlaybookReader
+        open={reader.open}
+        onOpenChange={(open) => setReader((r) => ({ ...r, open }))}
+        playbooks={playbooks}
+        initialPlaybookId={reader.playbookId}
+      />
 
     </div>
   );
