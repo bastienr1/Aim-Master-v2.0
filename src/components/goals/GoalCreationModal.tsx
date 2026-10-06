@@ -1,22 +1,27 @@
 import { useState, useCallback } from 'react';
-import { X, Target, Flame, Trophy, ChevronRight, ChevronLeft } from 'lucide-react';
+import { X, Target, Flame, Trophy, ChevronRight, ChevronLeft, Bookmark } from 'lucide-react';
 import type { GoalType, GoalCategory } from '@/types/goals';
 import { GOAL_TYPE_INFO, GOAL_TEMPLATES, CATEGORY_OPTIONS, type GoalTemplate } from '@/data/goalTemplates';
+import { DrillPicker } from './DrillPicker';
+
+export interface NewGoalInput {
+  title: string;
+  description?: string;
+  goal_type: GoalType;
+  category?: GoalCategory | null;
+  target_value: number;
+  unit: string;
+  deadline?: string;
+  priority: 1 | 2 | 3;
+  created_from: string;
+  /** Saved-drill ids to attach once the goal exists. */
+  drill_ids: string[];
+}
 
 interface GoalCreationModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onCreate: (goal: {
-    title: string;
-    description?: string;
-    goal_type: GoalType;
-    category?: GoalCategory | null;
-    target_value: number;
-    unit: string;
-    deadline?: string;
-    priority: 1 | 2 | 3;
-    created_from: string;
-  }) => Promise<void>;
+  onCreate: (goal: NewGoalInput) => Promise<void>;
 }
 
 type Step = 'type' | 'template' | 'details';
@@ -40,6 +45,8 @@ export function GoalCreationModal({ isOpen, onClose, onCreate }: GoalCreationMod
   const [category, setCategory] = useState<GoalCategory | null>(null);
   const [deadlineDays, setDeadlineDays] = useState(14);
   const [priority, setPriority] = useState<1 | 2 | 3>(2);
+  const [drillIds, setDrillIds] = useState<string[]>([]);
+  const [showDrills, setShowDrills] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   const reset = useCallback(() => {
@@ -53,6 +60,8 @@ export function GoalCreationModal({ isOpen, onClose, onCreate }: GoalCreationMod
     setCategory(null);
     setDeadlineDays(14);
     setPriority(2);
+    setDrillIds([]);
+    setShowDrills(false);
     setSubmitting(false);
   }, []);
 
@@ -105,6 +114,7 @@ export function GoalCreationModal({ isOpen, onClose, onCreate }: GoalCreationMod
       deadline: deadline.toISOString(),
       priority,
       created_from: isCustom ? 'manual' : 'manual',
+      drill_ids: drillIds,
     });
 
     handleClose();
@@ -295,6 +305,29 @@ export function GoalCreationModal({ isOpen, onClose, onCreate }: GoalCreationMod
                   </div>
                 </div>
               )}
+
+              {/* Training drills — saved from the playbooks, attached once the goal exists */}
+              <div>
+                <label className="text-xs font-['Inter'] text-[#9CA8B3] mb-1.5 block">Training drills</label>
+                <button
+                  type="button"
+                  onClick={() => setShowDrills(!showDrills)}
+                  aria-expanded={showDrills}
+                  className={`w-full text-left rounded-lg px-4 py-3 text-sm font-['Inter'] border flex items-center gap-2 transition-all ${
+                    drillIds.length > 0
+                      ? 'bg-[#53CADC]/10 text-[#53CADC] border-[#53CADC]/40'
+                      : 'bg-[#1C2B36] text-[#9CA8B3] border-white/10 hover:border-white/20'
+                  }`}
+                >
+                  <Bookmark className="w-4 h-4 shrink-0" />
+                  {drillIds.length > 0 ? `${drillIds.length} drill${drillIds.length === 1 ? '' : 's'} selected` : 'Add drills'}
+                </button>
+                {showDrills && (
+                  <div className="mt-2 rounded-lg border border-white/5 bg-[#0B141C] p-3">
+                    <DrillPicker goalCategory={category} selected={drillIds} onChange={setDrillIds} />
+                  </div>
+                )}
+              </div>
 
               {/* Deadline */}
               <div>

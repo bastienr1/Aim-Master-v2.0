@@ -1,8 +1,23 @@
 import { useState } from 'react';
-import { Target, Plus, CheckCircle2 } from 'lucide-react';
+import { toast } from 'sonner';
+import { Target, Plus, CheckCircle2, X } from 'lucide-react';
 import { useGoals } from '@/hooks/useGoals';
+import { useSavedDrills } from '@/hooks/useSavedDrills';
+import { usePlaybookIndex } from '@/hooks/usePlaybooks';
+import { drillsForGoal, mergeScenarios } from '@/lib/savedDrills';
 import { GoalCard } from '@/components/goals/GoalCard';
-import { GoalCreationModal } from '@/components/goals/GoalCreationModal';
+import { GoalCreationModal, type NewGoalInput } from '@/components/goals/GoalCreationModal';
+import { DrillPicker } from '@/components/goals/DrillPicker';
+import { PlaybookReader } from '@/components/playbook/PlaybookReader';
+import type { Goal, GoalCategory } from '@/types/goals';
+import type { SavedDrill } from '@/types/playbook';
+
+interface ReaderTarget {
+  open: boolean;
+  playbookId: string | null;
+  seconds: number | null;
+  drillId: string | null;
+}
 
 export function Goals() {
   const {
@@ -19,7 +34,14 @@ export function Goals() {
     updateGoal,
   } = useGoals();
 
+  // Saved drills and their goal links come from the shared store, so a drill
+  // saved in the Home reader is pickable here without a reload.
+  const { saved, links, linkDrills, unlinkDrill, forgetGoalLinks } = useSavedDrills();
+  const { playbooks } = usePlaybookIndex();
+
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [addDrillsFor, setAddDrillsFor] = useState<Goal | null>(null);
+  const [reader, setReader] = useState<ReaderTarget>({ open: false, playbookId: null, seconds: null, drillId: null });
 
   const supportingGoals = activeGoals.filter((g) => g !== primaryGoal);
 
@@ -30,6 +52,48 @@ export function Goals() {
     }
     await updateGoal(goalId, { priority: 1 });
   };
+
+  // The database drops a deleted goal's links by cascade; the store has to follow.
+  const handleDelete = async (goalId: string) => {
+    await deleteGoal(goalId);
+    forgetGoalLinks(goalId);
+  };
+
+  const handleCreate = async ({ drill_ids, ...goalData }: NewGoalInput) => {
+    const picked = saved.filter((s) => drill_ids.includes(s.id));
+    const goal = await createGoal({ ...goalData, linked_scenarios: mergeScenarios([], picked) });
+    if (goal && drill_ids.length > 0) {
+      const ok = await linkDrills(goal.id, drill_ids);
+      if (!ok) toast.error('Goal created, but the drills were not attached. Add them from the goal card.');
+    }
+  };
+
+  const handleAddDrills = async (goal: Goal, ids: string[]) => {
+    if (ids.length === 0) return;
+    const ok = await linkDrills(goal.id, ids);
+    if (!ok) {
+      toast.error('The drills were not attached. Try again from the goal card.');
+      return;
+    }
+    const picked = saved.filter((s) => ids.includes(s.id));
+    const existing = goal.linked_scenarios ?? [];
+    const merged = mergeScenarios(existing, picked);
+    if (merged.length !== existing.length) {
+      await updateGoal(goal.id, { linked_scenarios: merged });
+    }
+  };
+
+  const openDrill = (drill: SavedDrill) => {
+    if (drill.playbook_id === null) return;
+    setReader({ open: true, playbookId: drill.playbook_id, seconds: drill.source_start_seconds, drillId: drill.drill_id });
+  };
+
+  const drillProps = (goal: Goal) => ({
+    drills: drillsForGoal(goal.id, links, saved),
+    onOpenDrill: openDrill,
+    onUnlinkDrill: (drill: SavedDrill) => unlinkDrill(goal.id, drill.id),
+    onAddDrills: () => setAddDrillsFor(goal),
+  });
 
   if (isLoading) {
     return (
@@ -103,7 +167,8 @@ export function Goals() {
             onComplete={completeGoal}
             onPause={pauseGoal}
             onAbandon={abandonGoal}
-            onDelete={deleteGoal}
+            onDelete={handleDelete}
+            {...drillProps(primaryGoal)}
           />
         </div>
       )}
@@ -123,8 +188,9 @@ export function Goals() {
                 onPause={pauseGoal}
                 onAbandon={abandonGoal}
                 onReactivate={reactivateGoal}
-                onDelete={deleteGoal}
+                onDelete={handleDelete}
                 onSetPrimary={handleSetPrimary}
+                {...drillProps(goal)}
               />
             ))}
           </div>
@@ -173,10 +239,85 @@ export function Goals() {
       <GoalCreationModal
         isOpen={showCreateModal}
         onClose={() => setShowCreateModal(false)}
-        onCreate={async (goalData) => {
-          await createGoal(goalData);
-        }}
+        onCreate={handleCreate}
       />
+
+      {/* Add drills to an existing goal */}
+      {addDrillsFor && (
+        <AddDrillsDialog
+          goal={addDrillsFor}
+          excludeIds={drillsForGoal(addDrillsFor.id, links, saved).map((d) => d.id)}
+          onClose={() => setAddDrillsFor(null)}
+          onConfirm={async (ids) => {
+            const goal = addDrillsFor;
+            setAddDrillsFor(null);
+            await handleAddDrills(goal, ids);
+          }}
+        />
+      )}
+
+      {/* The reader a goal card's drill opens, at the drill's source moment */}
+      <PlaybookReader
+        open={reader.open}
+        onOpenChange={(open) => setReader((r) => ({ ...r, open }))}
+        playbooks={playbooks}
+        initialPlaybookId={reader.playbookId}
+        initialSeconds={reader.seconds}
+        initialDrillId={reader.drillId}
+      />
+    </div>
+  );
+}
+
+function AddDrillsDialog({
+  goal,
+  excludeIds,
+  onClose,
+  onConfirm,
+}: {
+  goal: Goal;
+  excludeIds: string[];
+  onClose: () => void;
+  onConfirm: (ids: string[]) => Promise<void>;
+}) {
+  const [picked, setPicked] = useState<string[]>([]);
+  const [busy, setBusy] = useState(false);
+
+  const confirm = async () => {
+    if (picked.length === 0 || busy) return;
+    setBusy(true);
+    await onConfirm(picked);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/85 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative w-full max-w-[480px] bg-[#0F1923] rounded-2xl p-6" style={{ maxHeight: 'calc(100vh - 32px)' }}>
+        <div className="flex items-start justify-between gap-3 mb-4">
+          <div className="min-w-0">
+            <h2 className="font-['Rajdhani'] text-xl font-semibold text-[#ECE8E1]">Add drills</h2>
+            <p className="text-xs font-['Inter'] text-[#5A6872] mt-0.5 truncate">{goal.title}</p>
+          </div>
+          <button onClick={onClose} className="text-[#5A6872] hover:text-[#9CA8B3] transition-colors shrink-0">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <DrillPicker goalCategory={(goal.category as GoalCategory | null) ?? null} selected={picked} onChange={setPicked} excludeIds={excludeIds} />
+
+        <button
+          onClick={confirm}
+          disabled={picked.length === 0 || busy}
+          className="mt-5 w-full rounded-lg py-3 text-sm font-semibold font-['Inter'] text-white transition-all"
+          style={{
+            backgroundColor: '#FF4655',
+            opacity: picked.length > 0 && !busy ? 1 : 0.4,
+            cursor: picked.length > 0 && !busy ? 'pointer' : 'not-allowed',
+          }}
+        >
+          {busy ? 'Adding…' : picked.length > 0 ? `Add ${picked.length} drill${picked.length === 1 ? '' : 's'}` : 'Add drills'}
+        </button>
+      </div>
     </div>
   );
 }
