@@ -36,7 +36,7 @@ export function Goals() {
 
   // Saved drills and their goal links come from the shared store, so a drill
   // saved in the Home reader is pickable here without a reload.
-  const { saved, links, linkDrills, unlinkDrill } = useSavedDrills();
+  const { saved, links, linkDrills, unlinkDrill, forgetGoalLinks } = useSavedDrills();
   const { playbooks } = usePlaybookIndex();
 
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -51,6 +51,12 @@ export function Goals() {
       await updateGoal(primaryGoal.id, { priority: 2 });
     }
     await updateGoal(goalId, { priority: 1 });
+  };
+
+  // The database drops a deleted goal's links by cascade; the store has to follow.
+  const handleDelete = async (goalId: string) => {
+    await deleteGoal(goalId);
+    forgetGoalLinks(goalId);
   };
 
   const handleCreate = async ({ drill_ids, ...goalData }: NewGoalInput) => {
@@ -161,7 +167,7 @@ export function Goals() {
             onComplete={completeGoal}
             onPause={pauseGoal}
             onAbandon={abandonGoal}
-            onDelete={deleteGoal}
+            onDelete={handleDelete}
             {...drillProps(primaryGoal)}
           />
         </div>
@@ -182,7 +188,7 @@ export function Goals() {
                 onPause={pauseGoal}
                 onAbandon={abandonGoal}
                 onReactivate={reactivateGoal}
-                onDelete={deleteGoal}
+                onDelete={handleDelete}
                 onSetPrimary={handleSetPrimary}
                 {...drillProps(goal)}
               />

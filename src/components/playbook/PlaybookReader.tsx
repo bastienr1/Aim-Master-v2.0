@@ -675,6 +675,10 @@ export function PlaybookReader({ open, onOpenChange, playbooks, initialPlaybookI
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         className="flex flex-col gap-0 p-0 max-w-none w-screen h-[100dvh] border-0 sm:rounded-none overflow-y-auto lg:overflow-hidden"
+        // Escape inside an open category picker closes the picker (its own listener), not the reader.
+        onEscapeKeyDown={(e) => {
+          if (document.querySelector('[data-category-picker]')) e.preventDefault();
+        }}
         style={{ background: SURFACE.page, color: TEXT.body }}
       >
         <header

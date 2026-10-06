@@ -171,6 +171,14 @@ export async function linkDrills(goalId: string, savedIds: string[]): Promise<bo
   return true
 }
 
+/**
+ * Drops a deleted goal's links from the cache. The database already removed
+ * them by cascade; without this the shelf's "Used in N goals" stays stale.
+ */
+export function forgetGoalLinks(goalId: string) {
+  set({ links: state.links.filter(l => l.goal_id !== goalId) })
+}
+
 /** Detaches one save from one goal. The save itself stays. */
 export async function unlinkDrill(goalId: string, savedId: string): Promise<void> {
   set({ links: state.links.filter(l => !(l.goal_id === goalId && l.saved_drill_id === savedId)) })

@@ -1,6 +1,7 @@
 import { useEffect, useSyncExternalStore } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import {
+  forgetGoalLinks,
   getSnapshot,
   linkDrills,
   load,
@@ -36,5 +37,6 @@ export function useSavedDrills() {
     setCategory,
     linkDrills,
     unlinkDrill,
+    forgetGoalLinks,
   };
 }

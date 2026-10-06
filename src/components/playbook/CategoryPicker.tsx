@@ -109,6 +109,7 @@ export function CategoryPicker({ options, suggested, current, onPick, onClose }:
       ref={ref}
       role="group"
       aria-label="Category"
+      data-category-picker
       style={{
         marginTop: '8px',
         padding: '10px',

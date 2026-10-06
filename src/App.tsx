@@ -1,3 +1,4 @@
+import { Toaster } from 'sonner';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import Auth from '@/pages/Auth';
 import Dashboard from '@/pages/Dashboard';
@@ -23,6 +24,12 @@ export default function App() {
   return (
     <AuthProvider>
       <AppContent />
+      {/*
+        Every `toast(...)` call (useGoals, saved drills) renders here; without a
+        Toaster they were silent. sonner's own dark theme, not the shadcn wrapper:
+        the app never sets the `.dark` class its tokens depend on.
+      */}
+      <Toaster theme="dark" position="bottom-right" />
     </AuthProvider>
   );
 }
