@@ -1,13 +1,19 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { toast } from 'sonner';
 import { ArrowLeft, CornerDownRight, Crosshair, Play, VideoOff } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { usePlaybookDetail } from '@/hooks/usePlaybooks';
+import { useSavedDrills } from '@/hooks/useSavedDrills';
 import { extractYouTubeId, formatTimestamp } from '@/lib/playbookParser';
 import { linkifyTimestamps, TIMESTAMP_HREF_PREFIX } from '@/lib/playbookMoments';
+import { categoryOptions, suggestedCategories, type CategoryOption } from '@/lib/drillCategories';
 import { SURFACE, TEXT, RADIUS, FONT, SEMANTIC } from '@/constants/theme';
-import type { PlaybookChapter, PlaybookDetail, PlaybookDrill, PlaybookSummary } from '@/types/playbook';
+import { SaveDrillButton } from './SaveDrillButton';
+import { CategoryPicker } from './CategoryPicker';
+import { SavedDrillsShelf } from './SavedDrillsShelf';
+import type { PlaybookChapter, PlaybookDetail, PlaybookDrill, PlaybookSummary, SavedDrill } from '@/types/playbook';
 
 // ─── Shared bits ──────────────────────────────────────────────────────────
 
@@ -113,51 +119,66 @@ const headingStyle: React.CSSProperties = {
 
 // ─── Library (no playbook picked) ─────────────────────────────────────────
 
-function Library({ playbooks, onPick }: { playbooks: PlaybookSummary[]; onPick(id: string): void }) {
+interface LibraryProps {
+  playbooks: PlaybookSummary[];
+  onPick(id: string): void;
+  /** From the Saved drills shelf: open a playbook at a drill's source moment. */
+  onOpenDrill(playbookId: string, seconds: number, drillId: string | null): void;
+}
+
+function Library({ playbooks, onPick, onOpenDrill }: LibraryProps) {
+  const shelf = <SavedDrillsShelf onOpen={onOpenDrill} />;
+
   if (playbooks.length === 0) {
     return (
-      <p style={{ fontFamily: FONT.body, fontSize: '13px', color: TEXT.body, lineHeight: 1.6, padding: '24px 20px' }}>
-        No playbooks synced yet &mdash; a playbook is a vault note with timed chapters. Run{' '}
-        <code style={{ fontFamily: FONT.mono, fontSize: '12px', color: TEXT.primary }}>npm run sync-playbooks</code>
-      </p>
+      <>
+        {shelf}
+        <p style={{ fontFamily: FONT.body, fontSize: '13px', color: TEXT.body, lineHeight: 1.6, padding: '24px 20px' }}>
+          No playbooks synced yet &mdash; a playbook is a vault note with timed chapters. Run{' '}
+          <code style={{ fontFamily: FONT.mono, fontSize: '12px', color: TEXT.primary }}>npm run sync-playbooks</code>
+        </p>
+      </>
     );
   }
 
   return (
-    <ul style={{ listStyle: 'none', margin: 0, padding: '12px 20px 24px', display: 'grid', gap: '10px', maxWidth: '860px' }}>
-      {playbooks.map((playbook) => (
-        <li key={playbook.id}>
-          <button
-            type="button"
-            onClick={() => onPick(playbook.id)}
-            style={{
-              ...plainButton,
-              display: 'block',
-              width: '100%',
-              background: SURFACE.card,
-              border: `1px solid ${SURFACE.cardBorder}`,
-              borderLeft: `2px solid ${kindColorOf(playbook)}`,
-              borderRadius: RADIUS.card,
-              padding: '14px 16px',
-            }}
-          >
-            <span style={{ ...monoCaps, fontSize: '9.5px', color: kindColorOf(playbook) }}>
-              {playbook.kind ?? 'technique'}
-              {playbook.creator && <span style={{ color: TEXT.dim }}> · {playbook.creator}</span>}
-            </span>
-            <span
-              style={{ display: 'block', fontFamily: FONT.heading, fontSize: '18px', fontWeight: 600, textTransform: 'uppercase', lineHeight: 1.2, color: TEXT.primary, margin: '4px 0 6px' }}
+    <>
+      {shelf}
+      <ul style={{ listStyle: 'none', margin: 0, padding: '12px 20px 24px', display: 'grid', gap: '10px', maxWidth: '860px' }}>
+        {playbooks.map((playbook) => (
+          <li key={playbook.id}>
+            <button
+              type="button"
+              onClick={() => onPick(playbook.id)}
+              style={{
+                ...plainButton,
+                display: 'block',
+                width: '100%',
+                background: SURFACE.card,
+                border: `1px solid ${SURFACE.cardBorder}`,
+                borderLeft: `2px solid ${kindColorOf(playbook)}`,
+                borderRadius: RADIUS.card,
+                padding: '14px 16px',
+              }}
             >
-              {playbook.title}
-            </span>
-            <span style={{ fontFamily: FONT.mono, fontSize: '11px', color: TEXT.label }}>
-              {playbook.chapter_count} chapters · {playbook.moment_count} moments
-              {playbook.video_duration_seconds != null && ` · ${formatTimestamp(playbook.video_duration_seconds)}`}
-            </span>
-          </button>
-        </li>
-      ))}
-    </ul>
+              <span style={{ ...monoCaps, fontSize: '9.5px', color: kindColorOf(playbook) }}>
+                {playbook.kind ?? 'technique'}
+                {playbook.creator && <span style={{ color: TEXT.dim }}> · {playbook.creator}</span>}
+              </span>
+              <span
+                style={{ display: 'block', fontFamily: FONT.heading, fontSize: '18px', fontWeight: 600, textTransform: 'uppercase', lineHeight: 1.2, color: TEXT.primary, margin: '4px 0 6px' }}
+              >
+                {playbook.title}
+              </span>
+              <span style={{ fontFamily: FONT.mono, fontSize: '11px', color: TEXT.label }}>
+                {playbook.chapter_count} chapters · {playbook.moment_count} moments
+                {playbook.video_duration_seconds != null && ` · ${formatTimestamp(playbook.video_duration_seconds)}`}
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </>
   );
 }
 
@@ -169,17 +190,59 @@ interface PlaybookViewProps {
   playbook: PlaybookSummary;
   detail: PlaybookDetail;
   loading: boolean;
+  /** Opens on the Drills tab, jumps the video here once and marks `initialDrillId`. */
+  initialSeconds?: number | null;
+  initialDrillId?: string | null;
 }
 
-/** Chapter list + video + notes for one playbook. Presentational: all data comes in as props. */
-export function PlaybookView({ playbook, detail, loading }: PlaybookViewProps) {
+/** Chapter list + video + notes for one playbook. Playbook data comes in as props; saves come from the shared store. */
+export function PlaybookView({ playbook, detail, loading, initialSeconds = null, initialDrillId = null }: PlaybookViewProps) {
   const { chapters, moments, drills } = detail;
   const accent = kindColorOf(playbook);
+  const openOnDrill = initialSeconds !== null || initialDrillId !== null;
 
   const [activeNumber, setActiveNumber] = useState<number | null>(null);
   // `nonce` changes on every jump so re-clicking the same moment restarts the video there.
   const [jump, setJump] = useState<{ seconds: number | null; nonce: number }>({ seconds: null, nonce: 0 });
-  const [tab, setTab] = useState<Tab>('notes');
+  const [tab, setTab] = useState<Tab>(openOnDrill ? 'drills' : 'notes');
+
+  // Saved drills: one click bookmarks a row; the category is offered, not required.
+  const { saved, saveDrill, removeSavedDrill, setCategory } = useSavedDrills();
+  const [busyDrillId, setBusyDrillId] = useState<string | null>(null);
+  const savedByDrillId = useMemo(() => {
+    const map = new Map<string, SavedDrill>();
+    for (const s of saved) if (s.drill_id) map.set(s.drill_id, s);
+    return map;
+  }, [saved]);
+  const options = useMemo(() => categoryOptions(saved), [saved]);
+  const suggested = useMemo(() => suggestedCategories(playbook.tags), [playbook.tags]);
+
+  const toggleSave = async (drill: PlaybookDrill) => {
+    if (busyDrillId) return;
+    setBusyDrillId(drill.id);
+    try {
+      const existing = savedByDrillId.get(drill.id);
+      if (existing) {
+        const count = await removeSavedDrill(existing.id);
+        if (count > 0) toast(`Removed. Unlinked from ${count} goal${count === 1 ? '' : 's'}.`);
+      } else {
+        await saveDrill(drill, playbook);
+      }
+    } finally {
+      setBusyDrillId(null);
+    }
+  };
+
+  // The one-off jump a Goals card or the shelf asked for, once the chapters are here.
+  const jumpedRef = useRef(false);
+  useEffect(() => {
+    if (jumpedRef.current || loading || chapters.length === 0 || initialSeconds === null) return;
+    jumpedRef.current = true;
+    const contains = (c: PlaybookChapter) => initialSeconds >= c.start_seconds && initialSeconds < c.end_seconds;
+    const target = chapters.filter(contains).pop() ?? chapters[0];
+    setActiveNumber(target.chapter_number);
+    setJump((j) => ({ seconds: initialSeconds, nonce: j.nonce + 1 }));
+  }, [loading, chapters, initialSeconds]);
 
   const isParent = (c: PlaybookChapter) => chapters.some((k) => k.parent_chapter_number === c.chapter_number);
   const active = chapters.find((c) => c.chapter_number === activeNumber) ?? chapters.find((c) => !isParent(c)) ?? chapters[0] ?? null;
@@ -412,9 +475,35 @@ export function PlaybookView({ playbook, detail, loading }: PlaybookViewProps) {
             {tab === 'drills' &&
               (drills.length > 0 ? (
                 <>
-                  {chapterDrills.length > 0 && <DrillList heading="From this chapter" drills={chapterDrills} onJump={jumpTo} />}
+                  {chapterDrills.length > 0 && (
+                    <DrillList
+                      heading="From this chapter"
+                      drills={chapterDrills}
+                      onJump={jumpTo}
+                      accent={accent}
+                      savedByDrillId={savedByDrillId}
+                      categoryOptions={options}
+                      suggested={suggested}
+                      busyDrillId={busyDrillId}
+                      onToggleSave={toggleSave}
+                      onSetCategory={(s, category) => setCategory(s.id, category)}
+                      markedDrillId={initialDrillId}
+                    />
+                  )}
                   {otherDrills.length > 0 && (
-                    <DrillList heading={chapterDrills.length > 0 ? 'Rest of the playbook' : 'All drills'} drills={otherDrills} onJump={jumpTo} />
+                    <DrillList
+                      heading={chapterDrills.length > 0 ? 'Rest of the playbook' : 'All drills'}
+                      drills={otherDrills}
+                      onJump={jumpTo}
+                      accent={accent}
+                      savedByDrillId={savedByDrillId}
+                      categoryOptions={options}
+                      suggested={suggested}
+                      busyDrillId={busyDrillId}
+                      onToggleSave={toggleSave}
+                      onSetCategory={(s, category) => setCategory(s.id, category)}
+                      markedDrillId={initialDrillId}
+                    />
                   )}
                 </>
               ) : (
@@ -427,35 +516,115 @@ export function PlaybookView({ playbook, detail, loading }: PlaybookViewProps) {
   );
 }
 
-function DrillList({ heading, drills, onJump }: { heading: string; drills: PlaybookDrill[]; onJump(seconds: number): void }) {
+interface DrillListProps {
+  heading: string;
+  drills: PlaybookDrill[];
+  onJump(seconds: number): void;
+  /** Everything below is optional: without it the list renders read-only, as before saved drills existed. */
+  accent?: string;
+  savedByDrillId?: Map<string, SavedDrill>;
+  categoryOptions?: CategoryOption[];
+  suggested?: string[];
+  busyDrillId?: string | null;
+  onToggleSave?(drill: PlaybookDrill): void;
+  onSetCategory?(saved: SavedDrill, category: string | null): void;
+  /** This row gets the accent border and is scrolled into view once. */
+  markedDrillId?: string | null;
+}
+
+function DrillList({
+  heading,
+  drills,
+  onJump,
+  accent = SEMANTIC.mechanics,
+  savedByDrillId,
+  categoryOptions: options = [],
+  suggested = [],
+  busyDrillId = null,
+  onToggleSave,
+  onSetCategory,
+  markedDrillId = null,
+}: DrillListProps) {
+  const [pickerFor, setPickerFor] = useState<string | null>(null);
+  const markedRef = useRef<HTMLLIElement>(null);
+
+  useEffect(() => {
+    markedRef.current?.scrollIntoView({ block: 'center' });
+  }, [markedDrillId]);
+
   return (
     <div style={{ marginBottom: '18px' }}>
       <p style={{ ...monoCaps, color: TEXT.label, marginBottom: '8px' }}>{heading}</p>
       <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: '8px' }}>
-        {drills.map((drill) => (
-          <li key={drill.id} style={{ background: SURFACE.inset, border: `1px solid ${SURFACE.insetBorder}`, borderRadius: RADIUS.card, padding: '11px 12px' }}>
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px' }}>
-              <Crosshair size={12} style={{ flexShrink: 0, color: SEMANTIC.mindset, transform: 'translateY(1px)' }} />
-              <p style={{ flex: 1, minWidth: 0, fontWeight: 600, color: TEXT.primary, lineHeight: 1.4 }}>{drill.title}</p>
-              {drill.source_start_seconds !== null && (
-                <button
-                  type="button"
-                  onClick={() => onJump(drill.source_start_seconds as number)}
-                  title="Watch where this drill comes from"
-                  style={{ ...plainButton, display: 'inline-flex', alignItems: 'center', gap: '4px', fontFamily: FONT.mono, fontSize: '10.5px', color: TEXT.label, whiteSpace: 'nowrap' }}
-                >
-                  <Play size={10} /> {formatTimestamp(drill.source_start_seconds)}
-                </button>
+        {drills.map((drill) => {
+          const saved = savedByDrillId?.get(drill.id) ?? null;
+          const marked = markedDrillId !== null && drill.id === markedDrillId;
+          return (
+            <li
+              key={drill.id}
+              ref={marked ? markedRef : undefined}
+              style={{ background: SURFACE.inset, border: `1px solid ${marked ? accent : SURFACE.insetBorder}`, borderRadius: RADIUS.card, padding: '11px 12px' }}
+            >
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px' }}>
+                <Crosshair size={12} style={{ flexShrink: 0, color: SEMANTIC.mindset, transform: 'translateY(1px)' }} />
+                <p style={{ flex: 1, minWidth: 0, fontWeight: 600, color: TEXT.primary, lineHeight: 1.4 }}>{drill.title}</p>
+                {onToggleSave && (
+                  <SaveDrillButton saved={saved !== null} busy={busyDrillId === drill.id} onToggle={() => onToggleSave(drill)} />
+                )}
+                {drill.source_start_seconds !== null && (
+                  <button
+                    type="button"
+                    onClick={() => onJump(drill.source_start_seconds as number)}
+                    title="Watch where this drill comes from"
+                    style={{ ...plainButton, display: 'inline-flex', alignItems: 'center', gap: '4px', fontFamily: FONT.mono, fontSize: '10.5px', color: TEXT.label, whiteSpace: 'nowrap' }}
+                  >
+                    <Play size={10} /> {formatTimestamp(drill.source_start_seconds)}
+                  </button>
+                )}
+              </div>
+              <dl style={{ margin: '6px 0 0 22px', display: 'grid', gap: '3px', fontSize: '12.5px', lineHeight: 1.5 }}>
+                {drill.scenario && <DrillRow term="Scenario" value={drill.scenario} mono />}
+                {drill.venue && <DrillRow term="Where" value={drill.venue} />}
+                {drill.cue && <DrillRow term="Watch for" value={drill.cue} />}
+                {drill.success_signal && <DrillRow term="Success" value={drill.success_signal} />}
+              </dl>
+              {saved && onSetCategory && (
+                <div style={{ margin: '7px 0 0 22px' }}>
+                  <p style={{ fontFamily: FONT.mono, fontSize: '10.5px', color: TEXT.label, display: 'flex', flexWrap: 'wrap', gap: '0 6px' }}>
+                    <span style={{ color: accent }}>Saved</span>
+                    {saved.category && (
+                      <>
+                        <span style={{ color: TEXT.dim }}>·</span>
+                        <span style={{ color: TEXT.body }}>{saved.category}</span>
+                      </>
+                    )}
+                    <span style={{ color: TEXT.dim }}>·</span>
+                    <button
+                      type="button"
+                      data-category-trigger
+                      onClick={() => setPickerFor(pickerFor === drill.id ? null : drill.id)}
+                      style={{ ...plainButton, textDecoration: 'underline', textUnderlineOffset: '3px', color: TEXT.label }}
+                    >
+                      {saved.category ? 'Change' : 'Add category'}
+                    </button>
+                  </p>
+                  {pickerFor === drill.id && (
+                    <CategoryPicker
+                      options={options}
+                      suggested={suggested}
+                      current={saved.category}
+                      onPick={(category) => {
+                        onSetCategory(saved, category);
+                        setPickerFor(null);
+                      }}
+                      onClose={() => setPickerFor(null)}
+                    />
+                  )}
+                </div>
               )}
-            </div>
-            <dl style={{ margin: '6px 0 0 22px', display: 'grid', gap: '3px', fontSize: '12.5px', lineHeight: 1.5 }}>
-              {drill.scenario && <DrillRow term="Scenario" value={drill.scenario} mono />}
-              {drill.venue && <DrillRow term="Where" value={drill.venue} />}
-              {drill.cue && <DrillRow term="Watch for" value={drill.cue} />}
-              {drill.success_signal && <DrillRow term="Success" value={drill.success_signal} />}
-            </dl>
-          </li>
-        ))}
+            </li>
+          );
+        })}
       </ul>
     </div>
   );
@@ -478,18 +647,28 @@ interface PlaybookReaderProps {
   playbooks: PlaybookSummary[];
   /** Opens straight onto this playbook; null opens the library. */
   initialPlaybookId: string | null;
+  /** With either set, the playbook opens on its Drills tab at this time with this drill marked. */
+  initialSeconds?: number | null;
+  initialDrillId?: string | null;
+}
+
+interface Target {
+  playbookId: string | null;
+  seconds: number | null;
+  drillId: string | null;
 }
 
 /** Full-screen reader: the playbook library, or one playbook's chapters, video and notes. */
-export function PlaybookReader({ open, onOpenChange, playbooks, initialPlaybookId }: PlaybookReaderProps) {
-  const [selectedId, setSelectedId] = useState<string | null>(initialPlaybookId);
+export function PlaybookReader({ open, onOpenChange, playbooks, initialPlaybookId, initialSeconds = null, initialDrillId = null }: PlaybookReaderProps) {
+  const [target, setTarget] = useState<Target>({ playbookId: initialPlaybookId, seconds: initialSeconds, drillId: initialDrillId });
+  const setSelectedId = (playbookId: string | null) => setTarget({ playbookId, seconds: null, drillId: null });
 
   // Each opening starts where the caller pointed it, not where the last one ended.
   useEffect(() => {
-    if (open) setSelectedId(initialPlaybookId);
-  }, [open, initialPlaybookId]);
+    if (open) setTarget({ playbookId: initialPlaybookId, seconds: initialSeconds, drillId: initialDrillId });
+  }, [open, initialPlaybookId, initialSeconds, initialDrillId]);
 
-  const playbook = playbooks.find((p) => p.id === selectedId) ?? null;
+  const playbook = playbooks.find((p) => p.id === target.playbookId) ?? null;
   const { detail, loading } = usePlaybookDetail(open ? playbook?.id ?? null : null);
 
   return (
@@ -528,10 +707,21 @@ export function PlaybookReader({ open, onOpenChange, playbooks, initialPlaybookI
 
         <div className="lg:flex-1 lg:min-h-0">
           {playbook ? (
-            // Keyed so chapter and tab state reset when another playbook is picked.
-            <PlaybookView key={playbook.id} playbook={playbook} detail={detail} loading={loading} />
+            // Keyed so chapter and tab state reset when another playbook — or another drill in it — is picked.
+            <PlaybookView
+              key={`${playbook.id}:${target.drillId ?? ''}:${target.seconds ?? ''}`}
+              playbook={playbook}
+              detail={detail}
+              loading={loading}
+              initialSeconds={target.seconds}
+              initialDrillId={target.drillId}
+            />
           ) : (
-            <Library playbooks={playbooks} onPick={setSelectedId} />
+            <Library
+              playbooks={playbooks}
+              onPick={setSelectedId}
+              onOpenDrill={(playbookId, seconds, drillId) => setTarget({ playbookId, seconds, drillId })}
+            />
           )}
         </div>
       </DialogContent>

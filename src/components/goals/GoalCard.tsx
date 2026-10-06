@@ -1,7 +1,9 @@
 import { useState } from 'react';
-import { Target, Pause, Trash2, Play, MoreVertical, CheckCircle2 } from 'lucide-react';
+import { Target, Pause, Trash2, Play, MoreVertical, CheckCircle2, Bookmark } from 'lucide-react';
 import type { Goal } from '@/types/goals';
+import type { SavedDrill } from '@/types/playbook';
 import { GOAL_TYPE_INFO } from '@/data/goalTemplates';
+import { GoalDrillList } from './GoalDrillList';
 
 interface GoalCardProps {
   goal: Goal;
@@ -12,6 +14,11 @@ interface GoalCardProps {
   onReactivate?: (goalId: string) => void;
   onDelete: (goalId: string) => void;
   onSetPrimary?: (goalId: string) => void;
+  /** Saved drills attached to this goal. Omitted: the card renders as before. */
+  drills?: SavedDrill[];
+  onOpenDrill?: (saved: SavedDrill) => void;
+  onUnlinkDrill?: (saved: SavedDrill) => void;
+  onAddDrills?: (goalId: string) => void;
 }
 
 export function GoalCard({
@@ -23,6 +30,10 @@ export function GoalCard({
   onReactivate,
   onDelete,
   onSetPrimary,
+  drills,
+  onOpenDrill,
+  onUnlinkDrill,
+  onAddDrills,
 }: GoalCardProps) {
   const [showMenu, setShowMenu] = useState(false);
   const typeInfo = GOAL_TYPE_INFO[goal.goal_type];
@@ -95,6 +106,11 @@ export function GoalCard({
                         <Target className="w-3.5 h-3.5" /> Set as Primary
                       </MenuButton>
                     )}
+                    {onAddDrills && (
+                      <MenuButton onClick={() => { onAddDrills(goal.id); setShowMenu(false); }}>
+                        <Bookmark className="w-3.5 h-3.5 text-[#53CADC]" /> Add drills
+                      </MenuButton>
+                    )}
                     <MenuButton onClick={() => { onComplete(goal.id); setShowMenu(false); }}>
                       <CheckCircle2 className="w-3.5 h-3.5 text-[#3DD598]" /> Mark Complete
                     </MenuButton>
@@ -152,6 +168,11 @@ export function GoalCard({
             />
           </div>
         </div>
+      )}
+
+      {/* Drills attached to this goal */}
+      {drills && drills.length > 0 && (
+        <GoalDrillList drills={drills} onOpen={(saved) => onOpenDrill?.(saved)} onUnlink={(saved) => onUnlinkDrill?.(saved)} />
       )}
 
       {/* Footer */}

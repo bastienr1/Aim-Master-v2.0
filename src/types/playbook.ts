@@ -71,3 +71,41 @@ export interface PlaybookDetail {
   moments: PlaybookMoment[];
   drills: PlaybookDrill[];
 }
+
+// ─── Saved drills (user-owned, written by the app) ───
+
+/**
+ * A user's bookmark of a drill: a text copy taken at save time plus a foreign
+ * key to the live row. `drill_id` goes null when a re-sync deletes the drill;
+ * the copy keeps the card readable and the jump working.
+ */
+export interface SavedDrill {
+  id: string;
+  user_id: string;
+  drill_id: string | null;
+  playbook_id: string | null;
+  /** Free text, filed by the user. Null means uncategorised. Never ''. */
+  category: string | null;
+  title: string;
+  venue: string | null;
+  scenario: string | null;
+  cue: string | null;
+  success_signal: string | null;
+  source_start_seconds: number | null;
+  source_end_seconds: number | null;
+  /** The playbook's title when saved. */
+  source_title: string | null;
+  /** Reserved, unused in v1. */
+  note: string | null;
+  created_at: string;
+}
+
+/** Links a saved drill to a goal. A goal has many; a drill can serve many. */
+export interface GoalDrill {
+  id: string;
+  user_id: string;
+  goal_id: string;
+  saved_drill_id: string;
+  position: number;
+  created_at: string;
+}
