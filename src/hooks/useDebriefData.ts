@@ -70,7 +70,7 @@ export function useDebriefData() {
           session_quality: debrief.sessionQuality,
           next_intent: debrief.nextIntent,
           checkin_id: recentCheckin?.[0]?.id || null,
-          kovaaks_play_ids: session.plays.map((p) => p.leaderboardId).filter(Boolean),
+          kovaaks_play_ids: session.plays.map((p) => p.playKey ?? p.leaderboardId).filter(Boolean),
           scenario_notes: scenarioNotes,
         })
         .select('id')

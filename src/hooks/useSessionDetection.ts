@@ -1,20 +1,14 @@
 import { useState, useCallback, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
-import { PlaylistService } from '@/services/PlaylistService';
-import type { GroupedSession, SessionPlay, PRDetection } from '@/types/debrief';
-import { SCORE_DECLINE_THRESHOLD } from '@/constants/debrief-config';
-
-interface ScoreRow {
-  score: number;
-  session_date: string;
-  scenario_id: string;
-  scenarios: {
-    name: string;
-    category: string;
-    kovaaks_id: string;
-  };
-}
+import { PlaylistService, type SyncedPlay } from '@/services/PlaylistService';
+import { LocalStatsService } from '@/services/LocalStatsService';
+import type { GroupedSession, SessionPlay } from '@/types/debrief';
+import { LOCAL_STATS_LOOKBACK_MS, SCORE_DECLINE_THRESHOLD } from '@/constants/debrief-config';
+import {
+  categoriesByScenario,
+  distinctScenarios,
+} from '../../supabase/functions/kovaaks-scores/sessionPlays';
 
 interface UseSessionDetectionReturn {
   sessionData: GroupedSession | null;
@@ -25,6 +19,25 @@ interface UseSessionDetectionReturn {
   setEmptySessionData: (session: GroupedSession) => void;
 }
 
+function toSessionPlay(play: SyncedPlay): SessionPlay {
+  return {
+    scenarioName: play.scenarioName,
+    score: play.score,
+    timestamp: play.playedAt,
+    leaderboardId: play.leaderboardId ?? undefined,
+    aimType: play.aimType ?? undefined,
+    playKey: play.playKey,
+    source: play.source,
+    isChallenge: play.isChallenge,
+  };
+}
+
+/**
+ * Builds the post-session summary. The kovaaks-scores edge function decides
+ * which runs belong to the session (local stats files, timestamped KovaaK's
+ * activity, baseline changes) and persists them; this hook only offers it the
+ * local runs, then shapes its answer for the debrief.
+ */
 export function useSessionDetection(): UseSessionDetectionReturn {
   const { user } = useAuth();
   const [sessionData, setSessionData] = useState<GroupedSession | null>(null);
@@ -44,7 +57,7 @@ export function useSessionDetection(): UseSessionDetectionReturn {
     setDetecting(true);
 
     try {
-      // 1. Get Kovaaks username
+      // 1. Kovaaks username
       const { data: profile } = await supabase
         .from('kovaaks_profiles')
         .select('username')
@@ -56,9 +69,8 @@ export function useSessionDetection(): UseSessionDetectionReturn {
         setDetecting(false);
         return null;
       }
-      console.log('[detectSession] Username:', profile.username);
 
-      // 2. Fetch active program to scope the sync
+      // 2. Active program scopes the score sync and the Launch baseline
       const { data: activeProgram } = await supabase
         .from('training_programs')
         .select('id, scenarios_data')
@@ -73,7 +85,7 @@ export function useSessionDetection(): UseSessionDetectionReturn {
       }
 
       const programScenarioNames: string[] = Array.isArray(activeProgram.scenarios_data)
-        ? activeProgram.scenarios_data.map((s: any) => s.scenarioName).filter(Boolean)
+        ? activeProgram.scenarios_data.map((s: { scenarioName?: string }) => s.scenarioName).filter((n): n is string => !!n)
         : [];
 
       if (programScenarioNames.length === 0) {
@@ -82,165 +94,107 @@ export function useSessionDetection(): UseSessionDetectionReturn {
         return null;
       }
 
-      // 2b. SCOPED sync: only sync the program's scenarios, not the whole profile
-      console.log('[detectSession] Syncing', programScenarioNames.length, 'program scenarios (scoped)');
-      const syncResult = await PlaylistService.syncProgramScores(programScenarioNames);
-      if (!syncResult.success) {
+      // 3. Local stats folder (the only complete record of a session), when linked
+      let localRuns = await LocalStatsService.readRunsSince(Date.now() - LOCAL_STATS_LOOKBACK_MS);
+      if (localRuns.length > 0) {
+        console.log('[detectSession] Offering', localRuns.length, 'local runs to the sync');
+      } else {
+        localRuns = [];
+      }
+
+      // 4. Sync — the edge function returns this session's plays and PRs
+      const syncResult = await PlaylistService.syncProgramScores(programScenarioNames, {
+        programId: activeProgram.id,
+        localRuns,
+      });
+      if (!syncResult.success || !syncResult.data) {
         console.error('[detectSession] Scoped sync failed:', syncResult.error);
         setDetecting(false);
         return null;
       }
-      console.log('[detectSession] Scoped sync succeeded:', syncResult.data);
+      const synced = syncResult.data;
+      console.log('[detectSession] Sync succeeded:', {
+        synced: synced.synced,
+        matched: synced.matched,
+        plays: synced.plays?.length,
+        window: synced.window,
+      });
 
-      // 3. Determine session start boundary from session_baselines (set on Launch).
-      // Falls back to 1 hour ago if no baseline exists (rare; pre-launch desync).
-      const { data: latestBaseline } = await supabase
-        .from('session_baselines')
-        .select('session_started_at')
-        .eq('user_id', user.id)
-        .eq('program_id', activeProgram.id)
-        .order('session_started_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      const sessionStartBoundary = latestBaseline?.session_started_at
-        ?? new Date(Date.now() - 60 * 60 * 1000).toISOString();
-
-      console.log('[detectSession] Session boundary:', sessionStartBoundary, latestBaseline ? '(from baseline)' : '(1h fallback)');
-
-      // Get scores written AFTER the session start boundary
-      const { data: recentScores, error: scoresError } = await supabase
-        .from('score_history')
-        .select(`
-          score,
-          session_date,
-          scenario_id,
-          scenarios!inner(name, category, kovaaks_id)
-        `)
-        .eq('user_id', user.id)
-        .gte('session_date', sessionStartBoundary)
-        .order('session_date', { ascending: true });
-
-      if (scoresError || !recentScores || recentScores.length === 0) {
-        console.log('[detectSession] No recent scores in last 3 hours. Error:', scoresError);
+      if (!Array.isArray(synced.plays)) {
+        console.warn('[detectSession] kovaaks-scores did not return session plays — deploy the current function');
         setDetecting(false);
         return null;
       }
-      console.log('[detectSession] Found', recentScores.length, 'recent scores');
 
-      const typedScores = recentScores as unknown as ScoreRow[];
-
-      // 4. Check if we already debriefed these scores
-      const latestScoreDate = typedScores[typedScores.length - 1].session_date;
-      if (lastDetectionRef.current === latestScoreDate) {
-        console.log('[detectSession] BLOCKED: lastDetectionRef matches latest score date:', latestScoreDate);
+      if (synced.plays.length === 0) {
+        console.log('[detectSession] No plays in the session window', synced.window);
         setDetecting(false);
         return null;
       }
-      console.log('[detectSession] New scores detected, latest:', latestScoreDate);
 
-      // Check against existing debriefs
+      const plays = synced.plays.map(toSessionPlay);
+      const latestPlayAt = plays[plays.length - 1].timestamp;
+
+      // 5. Already debriefed these plays?
+      if (lastDetectionRef.current === latestPlayAt) {
+        console.log('[detectSession] BLOCKED: lastDetectionRef matches latest play:', latestPlayAt);
+        setDetecting(false);
+        return null;
+      }
+
       const { data: existingDebrief } = await supabase
         .from('session_debriefs')
         .select('id')
         .eq('user_id', user.id)
-        .gte('session_end', sessionStartBoundary)
+        .gte('session_end', latestPlayAt)
         .limit(1);
 
       if (existingDebrief && existingDebrief.length > 0) {
-        console.log('[detectSession] BLOCKED: existing debrief found within session boundary');
+        console.log('[detectSession] BLOCKED: a debrief already covers the latest play');
         setDetecting(false);
         return null;
       }
-      console.log('[detectSession] No existing debrief blocking — building session data');
 
-      // 5. Group scores into plays
-      const plays: SessionPlay[] = typedScores.map((s) => ({
-        scenarioName: s.scenarios?.name || 'Unknown',
-        score: s.score,
-        timestamp: s.session_date,
-        leaderboardId: s.scenarios?.kovaaks_id || undefined,
-        aimType: s.scenarios?.category || undefined,
-      }));
-
-      // 6. Detect PRs by comparing against session_baselines (pre-launch snapshot)
-      const baselineMap = await PlaylistService.getLatestBaseline(user.id, activeProgram.id);
-      console.log('[detectSession] Loaded baseline with', baselineMap.size, 'scenarios');
-
-      const prsDetected: PRDetection[] = [];
-      // Track best score per scenario in this session (multiple plays per scenario possible)
-      const bestBySession = new Map<string, number>();
-      for (const play of plays) {
-        const current = bestBySession.get(play.scenarioName) ?? 0;
-        if (play.score > current) bestBySession.set(play.scenarioName, play.score);
-      }
-
-      for (const [scenarioName, sessionBest] of bestBySession.entries()) {
-        const baseline = baselineMap.get(scenarioName);
-
-        if (baseline === undefined) {
-          // No baseline — scenario wasn't part of pre-launch snapshot. Skip silently.
-          console.log('[detectSession] No baseline for', scenarioName, '— skipping PR check');
-          continue;
-        }
-
-        if (sessionBest > baseline) {
-          prsDetected.push({
-            scenarioName,
-            newScore: sessionBest,
-            previousBest: baseline,
-            improvementPct: baseline > 0 ? ((sessionBest - baseline) / baseline) * 100 : 0,
-          });
-          console.log('[detectSession] PR detected:', scenarioName, baseline, '→', sessionBest);
-        }
-      }
-
-      // 7. Calculate categories
-      const categories: Record<string, number> = {};
-      for (const play of plays) {
-        const cat = (play.aimType || 'other').toLowerCase();
-        categories[cat] = (categories[cat] || 0) + 1;
-      }
-
-      // 8. Calculate score trajectory (normalized 0-1)
-      const scores = plays.map((p) => p.score);
+      // 6. Shape the session. Challenge runs drive the score trend; freeplay
+      // runs still count as "played".
+      const challengeScores = synced.plays.filter((p) => p.isChallenge).map((p) => p.score);
+      const scores = challengeScores.length >= 2 ? challengeScores : plays.map((p) => p.score);
       const maxScore = Math.max(...scores, 1);
       const minScore = Math.min(...scores, 0);
       const range = maxScore - minScore || 1;
       const scoreTrajectory = scores.map((s) => (s - minScore) / range);
 
-      // 9. Detect score decline
       const halfwayIdx = Math.floor(scores.length / 2);
-      const firstHalfAvg =
-        scores.slice(0, halfwayIdx).reduce((a, b) => a + b, 0) / (halfwayIdx || 1);
-      const secondHalfAvg =
-        scores.slice(halfwayIdx).reduce((a, b) => a + b, 0) /
-        (scores.length - halfwayIdx || 1);
+      const firstHalfAvg = scores.slice(0, halfwayIdx).reduce((a, b) => a + b, 0) / (halfwayIdx || 1);
+      const secondHalfAvg = scores.slice(halfwayIdx).reduce((a, b) => a + b, 0) / (scores.length - halfwayIdx || 1);
       const scoresDeclined =
-        firstHalfAvg > 0 &&
-        (firstHalfAvg - secondHalfAvg) / firstHalfAvg > SCORE_DECLINE_THRESHOLD;
+        firstHalfAvg > 0 && (firstHalfAvg - secondHalfAvg) / firstHalfAvg > SCORE_DECLINE_THRESHOLD;
 
-      // 10. Calculate duration
       const sessionStart = plays[0].timestamp;
-      const sessionEnd = plays[plays.length - 1].timestamp;
+      const sessionEnd = latestPlayAt;
       const durationSeconds = Math.round(
         (new Date(sessionEnd).getTime() - new Date(sessionStart).getTime()) / 1000
       );
+
+      const prsDetected = synced.prs ?? [];
+      for (const pr of prsDetected) {
+        console.log('[detectSession] PR detected:', pr.scenarioName, pr.previousBest, '→', pr.newScore);
+      }
 
       const grouped: GroupedSession = {
         sessionStart,
         sessionEnd,
         durationSeconds: Math.max(durationSeconds, 60),
         plays,
-        scenarioCount: plays.length,
-        categories,
+        scenarioCount: distinctScenarios(synced.plays).length,
+        categories: categoriesByScenario(synced.plays),
         prsDetected,
         scoreTrajectory,
         scoresDeclined,
         hasNewScenario: false,
       };
 
-      lastDetectionRef.current = latestScoreDate;
+      lastDetectionRef.current = latestPlayAt;
       debriefInProgressRef.current = true;
       setSessionData(grouped);
       setDetecting(false);
