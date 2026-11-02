@@ -18,6 +18,12 @@ export interface SessionPlay {
   leaderboardId?: string;
   aimType?: string;
   isNewScenario?: boolean;
+  /** Deterministic play id from the sync (`<source>:<scenario>:<second>`). */
+  playKey?: string;
+  /** Where the evidence came from: local_stats | kovaaks_recent | kovaaks_total_play | kovaaks_baseline. */
+  source?: string;
+  /** false = freeplay / aborted run (local stats only); excluded from PRs and the score trend. */
+  isChallenge?: boolean;
 }
 
 export interface PRDetection {

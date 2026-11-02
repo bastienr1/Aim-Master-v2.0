@@ -1,4 +1,6 @@
 import { supabase } from '../lib/supabase';
+import type { LocalRunPayload } from '../lib/kovaaksStats';
+import type { PRDetection } from '../types/debrief';
 
 const EDGE_FUNCTION = 'kovaaks-playlists';
 
@@ -43,6 +45,46 @@ export interface ScenarioCompletion {
   status: string;
   notes: string | null;
   completed_at: string | null;
+}
+
+/** One run of one scenario, as the sync edge function reports it. */
+export interface SyncedPlay {
+  scenarioName: string;
+  score: number;
+  playedAt: string;
+  source: 'local_stats' | 'kovaaks_recent' | 'kovaaks_total_play' | 'kovaaks_baseline';
+  isChallenge: boolean;
+  leaderboardId: string | null;
+  aimType: string | null;
+  hash: string | null;
+  playKey: string;
+  stored: boolean;
+}
+
+export interface SyncWindow {
+  start: string;
+  notBefore: string | null;
+  anchor: 'baseline' | 'checkin' | 'fallback';
+}
+
+export interface SyncProgramScoresData {
+  synced: number;
+  errors: number;
+  matched: number;
+  total: number;
+  notFound: string[];
+  /** Present once the kovaaks-scores function that returns session plays is deployed. */
+  window?: SyncWindow;
+  plays?: SyncedPlay[];
+  prs?: PRDetection[];
+  historyErrors?: number;
+  localRuns?: number;
+}
+
+export interface SyncProgramScoresOptions {
+  programId?: string | null;
+  /** Runs read from the local KovaaK's stats folder (see LocalStatsService). */
+  localRuns?: LocalRunPayload[];
 }
 
 export class PlaylistService {
@@ -139,9 +181,9 @@ export class PlaylistService {
     return map;
   }
 
-  static async syncProgramScores(scenarioNames: string[]): Promise<{
+  static async syncProgramScores(scenarioNames: string[], options: SyncProgramScoresOptions = {}): Promise<{
     success: boolean;
-    data?: { synced: number; errors: number; matched: number; total: number; notFound: string[] };
+    data?: SyncProgramScoresData;
     error?: string;
   }> {
     try {
@@ -159,6 +201,8 @@ export class PlaylistService {
           body: JSON.stringify({
             action: 'sync_program_scores',
             scenarioNames,
+            programId: options.programId ?? null,
+            localRuns: options.localRuns ?? [],
           }),
         }
       );

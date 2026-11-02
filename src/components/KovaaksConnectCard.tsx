@@ -15,8 +15,10 @@ import {
   Globe,
   Star,
   Unlink,
+  FolderOpen,
 } from 'lucide-react';
 import { relativeTime } from '../lib/time';
+import { LocalStatsService, LocalStatsStatus } from '../services/LocalStatsService';
 
 type CardState = 'loading' | 'not-connected' | 'syncing' | 'connected';
 
@@ -33,6 +35,34 @@ export function KovaaksConnectCard() {
   const [connectedUsername, setConnectedUsername] = useState<string | null>(null);
   const [lastSynced, setLastSynced] = useState<string | null>(null);
   const [syncStatus, setSyncStatus] = useState<string | null>(null);
+  const [localStats, setLocalStats] = useState<LocalStatsStatus | null>(null);
+  const [localStatsNote, setLocalStatsNote] = useState<string | null>(null);
+
+  const refreshLocalStats = useCallback(async () => {
+    setLocalStats(await LocalStatsService.status());
+  }, []);
+
+  useEffect(() => {
+    refreshLocalStats();
+  }, [refreshLocalStats]);
+
+  const handleLinkFolder = async () => {
+    setLocalStatsNote(null);
+    const result = await LocalStatsService.link();
+    if (!result) return;
+    setLocalStatsNote(
+      result.statsFiles > 0
+        ? `Linked — ${result.statsFiles}+ stats files found. Runs are read from here after each session.`
+        : `Linked "${result.folderName}", but no "... Stats.csv" files were found there. Pick FPSAimTrainer\\FPSAimTrainer\\stats.`
+    );
+    await refreshLocalStats();
+  };
+
+  const handleUnlinkFolder = async () => {
+    await LocalStatsService.unlink();
+    setLocalStatsNote(null);
+    await refreshLocalStats();
+  };
 
   const checkStatus = useCallback(async () => {
     if (!user) return;
@@ -222,6 +252,55 @@ export function KovaaksConnectCard() {
                 'bg-[#9CA8B3]'
               }`} />
             </div>
+          )}
+        </div>
+
+        {/* Local stats folder — the only complete record of what was played */}
+        <div className="bg-[#0F1923] rounded-xl px-4 py-3 mb-5">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <span className="text-[#5A6872] text-xs font-['Inter'] uppercase tracking-wider block mb-0.5">
+                Local Stats Folder
+              </span>
+              {localStats?.linked ? (
+                <span className="font-['JetBrains_Mono'] text-sm font-semibold text-[#ECE8E1] truncate block">
+                  {localStats.folderName}
+                </span>
+              ) : (
+                <span className="text-[#9CA8B3] text-sm font-['Inter']">
+                  {localStats?.supported === false
+                    ? "Needs Chrome or Edge to read the KovaaK's stats folder"
+                    : "Not linked — debriefs only see new high scores from the KovaaK's API"}
+                </span>
+              )}
+            </div>
+            {localStats?.supported !== false && (
+              localStats?.linked ? (
+                <button
+                  onClick={handleUnlinkFolder}
+                  className="text-[#9CA8B3] text-xs font-['Inter'] hover:text-[#FF4655] transition-colors duration-200 inline-flex items-center gap-1.5 shrink-0"
+                >
+                  <Unlink className="w-3.5 h-3.5" />
+                  Unlink
+                </button>
+              ) : (
+                <button
+                  onClick={handleLinkFolder}
+                  className="border border-[#53CADC] text-[#53CADC] rounded-lg px-3 py-1.5 text-xs font-semibold font-['Inter'] hover:bg-[#53CADC]/10 transition-all duration-200 inline-flex items-center gap-1.5 shrink-0"
+                >
+                  <FolderOpen className="w-3.5 h-3.5" />
+                  Link folder
+                </button>
+              )
+            )}
+          </div>
+          {localStatsNote && (
+            <p className="text-[#9CA8B3] text-xs font-['Inter'] mt-2">{localStatsNote}</p>
+          )}
+          {!localStats?.linked && localStats?.supported !== false && (
+            <p className="text-[#5A6872] text-xs font-['Inter'] mt-2">
+              Steam\steamapps\common\FPSAimTrainer\FPSAimTrainer\stats — one CSV per run, so the debrief lists exactly what you played.
+            </p>
           )}
         </div>
 

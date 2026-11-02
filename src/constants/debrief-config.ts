@@ -188,6 +188,7 @@ export const DEBRIEF_MOTIVATIONAL_TIPS: string[] = [
 
 export const DEBRIEF_COOLDOWN_MS = 0; // TODO: restore to 2 * 60 * 60 * 1000 for production
 export const SESSION_GAP_THRESHOLD_MS = 10 * 60 * 1000; // 10 min gap = new session
+export const LOCAL_STATS_LOOKBACK_MS = 12 * 60 * 60 * 1000; // local stats files offered to the sync (the edge function picks the session window)
 export const SHORT_SESSION_THRESHOLD_S = 600; // < 10 min = short session
 export const SCORE_DECLINE_THRESHOLD = 0.15; // 15% decline triggers contextual chip
 export const INSIGHT_MIN_DEBRIEFS = 10; // need 10+ debriefs to show insights
