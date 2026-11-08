@@ -709,7 +709,12 @@ export function PlaybookReader({ open, onOpenChange, playbooks, initialPlaybookI
           </div>
         </header>
 
-        <div className="lg:flex-1 lg:min-h-0">
+        {/*
+          On desktop the dialog itself doesn't scroll (the playbook view scrolls its two
+          columns), so this region is the scroll container for anything taller —
+          the library list above all. On a phone the dialog scrolls instead.
+        */}
+        <div className="lg:flex-1 lg:min-h-0 lg:overflow-y-auto">
           {playbook ? (
             // Keyed so chapter and tab state reset when another playbook — or another drill in it — is picked.
             <PlaybookView
