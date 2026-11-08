@@ -2,13 +2,14 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { toast } from 'sonner';
-import { ArrowLeft, CornerDownRight, Crosshair, Play, VideoOff } from 'lucide-react';
+import { ArrowLeft, ChevronRight, CornerDownRight, Crosshair, Play, VideoOff } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { usePlaybookDetail } from '@/hooks/usePlaybooks';
 import { useSavedDrills } from '@/hooks/useSavedDrills';
 import { extractYouTubeId, formatTimestamp } from '@/lib/playbookParser';
 import { linkifyTimestamps, TIMESTAMP_HREF_PREFIX } from '@/lib/playbookMoments';
-import { categoryOptions, suggestedCategories, type CategoryOption } from '@/lib/drillCategories';
+import { FAMILY_LABEL, categoryOptions, suggestedCategories, type CategoryOption } from '@/lib/drillCategories';
+import { familiesOf, groupLibrary, type LibraryGroupKey } from '@/lib/playbookLibrary';
 import { SURFACE, TEXT, RADIUS, FONT, SEMANTIC } from '@/constants/theme';
 import { SaveDrillButton } from './SaveDrillButton';
 import { CategoryPicker } from './CategoryPicker';
@@ -144,41 +145,109 @@ function Library({ playbooks, onPick, onOpenDrill }: LibraryProps) {
   return (
     <>
       {shelf}
-      <ul style={{ listStyle: 'none', margin: 0, padding: '12px 20px 24px', display: 'grid', gap: '10px', maxWidth: '860px' }}>
-        {playbooks.map((playbook) => (
-          <li key={playbook.id}>
+      <GroupedPlaybooks playbooks={playbooks} onPick={onPick} />
+    </>
+  );
+}
+
+/** The library by aim family → category (see `lib/playbookLibrary.ts`); each family folds. */
+function GroupedPlaybooks({ playbooks, onPick }: { playbooks: PlaybookSummary[]; onPick(id: string): void }) {
+  const groups = useMemo(() => groupLibrary(playbooks), [playbooks]);
+  const [collapsed, setCollapsed] = useState<Set<LibraryGroupKey>>(() => new Set());
+  const toggle = (key: LibraryGroupKey) =>
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+
+  return (
+    <section aria-label="Playbooks" style={{ padding: '14px 20px 24px', maxWidth: '860px' }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', marginBottom: '6px' }}>
+        <h3 style={{ fontFamily: FONT.heading, fontSize: '18px', fontWeight: 600, textTransform: 'uppercase', color: TEXT.primary, margin: 0 }}>Playbooks</h3>
+        <span style={{ fontFamily: FONT.mono, fontSize: '12px', color: TEXT.label }}>{playbooks.length}</span>
+      </div>
+
+      {groups.map((group) => {
+        const open = !collapsed.has(group.key);
+        const bodyId = `playbook-group-${group.key}`;
+        // Sub-headings only where they say something: a family with a named category in it.
+        const showSections = group.sections.some((s) => s.category !== null);
+        return (
+          <div key={group.key} style={{ borderTop: `1px solid ${SURFACE.cardBorder}` }}>
             <button
               type="button"
-              onClick={() => onPick(playbook.id)}
-              style={{
-                ...plainButton,
-                display: 'block',
-                width: '100%',
-                background: SURFACE.card,
-                border: `1px solid ${SURFACE.cardBorder}`,
-                borderLeft: `2px solid ${kindColorOf(playbook)}`,
-                borderRadius: RADIUS.card,
-                padding: '14px 16px',
-              }}
+              onClick={() => toggle(group.key)}
+              aria-expanded={open}
+              aria-controls={bodyId}
+              style={{ ...plainButton, display: 'flex', alignItems: 'center', gap: '8px', width: '100%', padding: '12px 0', color: TEXT.primary }}
             >
-              <span style={{ ...monoCaps, fontSize: '9.5px', color: kindColorOf(playbook) }}>
-                {playbook.kind ?? 'technique'}
-                {playbook.creator && <span style={{ color: TEXT.dim }}> · {playbook.creator}</span>}
-              </span>
-              <span
-                style={{ display: 'block', fontFamily: FONT.heading, fontSize: '18px', fontWeight: 600, textTransform: 'uppercase', lineHeight: 1.2, color: TEXT.primary, margin: '4px 0 6px' }}
-              >
-                {playbook.title}
-              </span>
-              <span style={{ fontFamily: FONT.mono, fontSize: '11px', color: TEXT.label }}>
-                {playbook.chapter_count} chapters · {playbook.moment_count} moments
-                {playbook.video_duration_seconds != null && ` · ${formatTimestamp(playbook.video_duration_seconds)}`}
-              </span>
+              <ChevronRight size={14} style={{ flexShrink: 0, color: TEXT.label, transform: open ? 'rotate(90deg)' : 'none', transition: 'transform 120ms' }} />
+              <span style={{ ...monoCaps, fontSize: '11px', color: TEXT.primary }}>{group.label}</span>
+              <span style={{ fontFamily: FONT.mono, fontSize: '11px', color: TEXT.dim }}>{group.count}</span>
+              {group.key === 'all-round' && (
+                <span style={{ fontFamily: FONT.body, fontSize: '11.5px', color: TEXT.dim, marginLeft: '4px' }}>covers more than one family</span>
+              )}
             </button>
-          </li>
-        ))}
-      </ul>
-    </>
+
+            <div id={bodyId} hidden={!open} style={{ paddingBottom: '14px' }}>
+              {group.sections.map((section) => (
+                <div key={section.category ?? '__general'} style={{ marginBottom: '12px' }}>
+                  {showSections && (
+                    <p style={{ ...monoCaps, color: TEXT.label, margin: '2px 0 8px' }}>
+                      {section.label} <span style={{ color: TEXT.dim }}>{section.items.length}</span>
+                    </p>
+                  )}
+                  <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: '10px' }}>
+                    {section.items.map((playbook) => (
+                      <li key={playbook.id}>
+                        <PlaybookCard playbook={playbook} onPick={onPick} showFamilies={group.key === 'all-round'} />
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+    </section>
+  );
+}
+
+function PlaybookCard({ playbook, onPick, showFamilies }: { playbook: PlaybookSummary; onPick(id: string): void; showFamilies: boolean }) {
+  const families = showFamilies ? familiesOf(playbook).map((f) => FAMILY_LABEL[f]) : [];
+  return (
+    <button
+      type="button"
+      onClick={() => onPick(playbook.id)}
+      style={{
+        ...plainButton,
+        display: 'block',
+        width: '100%',
+        background: SURFACE.card,
+        border: `1px solid ${SURFACE.cardBorder}`,
+        borderLeft: `2px solid ${kindColorOf(playbook)}`,
+        borderRadius: RADIUS.card,
+        padding: '14px 16px',
+      }}
+    >
+      <span style={{ ...monoCaps, fontSize: '9.5px', color: kindColorOf(playbook) }}>
+        {playbook.kind ?? 'technique'}
+        {playbook.creator && <span style={{ color: TEXT.dim }}> · {playbook.creator}</span>}
+        {families.length > 0 && <span style={{ color: TEXT.label }}> · {families.join(' + ')}</span>}
+      </span>
+      <span
+        style={{ display: 'block', fontFamily: FONT.heading, fontSize: '18px', fontWeight: 600, textTransform: 'uppercase', lineHeight: 1.2, color: TEXT.primary, margin: '4px 0 6px' }}
+      >
+        {playbook.title}
+      </span>
+      <span style={{ fontFamily: FONT.mono, fontSize: '11px', color: TEXT.label }}>
+        {playbook.chapter_count} chapters · {playbook.moment_count} moments
+        {playbook.video_duration_seconds != null && ` · ${formatTimestamp(playbook.video_duration_seconds)}`}
+      </span>
+    </button>
   );
 }
 
